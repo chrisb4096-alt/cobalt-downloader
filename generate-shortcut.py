@@ -17,7 +17,10 @@ def new_uuid():
 
 
 def text(s):
-    return {"Value": {"string": s}, "WFSerializationType": "WFTextTokenString"}
+    return {
+        "Value": {"string": s, "attachmentsByRange": {}},
+        "WFSerializationType": "WFTextTokenString",
+    }
 
 
 def var_text(var_name):
@@ -141,6 +144,9 @@ def build_actions():
 
     # 6. POST to cobalt API
     actions.append(act("downloadurl", {
+        "UUID": new_uuid(),
+        "Advanced": True,
+        "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
         "WFHTTPHeaders": dict_value([
@@ -241,6 +247,9 @@ def build_debug_actions():
 
     # 7. API call
     actions.append(act("downloadurl", {
+        "UUID": new_uuid(),
+        "Advanced": True,
+        "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
         "WFHTTPHeaders": dict_value([
