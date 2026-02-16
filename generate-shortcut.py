@@ -230,61 +230,63 @@ def build_actions():
 
 
 def build_debug_actions():
-    """Debug version: shows full API response, copies to clipboard, then downloads."""
-    g_input = new_uuid()
-
+    """Minimal diagnostic: Test A (simple GET) then Test B (POST with headers).
+    Shows alert after each step so we know exactly where it fails."""
     actions = []
 
-    # 1-6: Input handling (same pattern)
-    actions.append(act("setvariable", {
-        "WFVariableName": "videoURL", "WFInput": shortcut_input(),
+    # --- Test A: Simple GET to google.com ---
+    actions.append(act("downloadurl", {
+        "WFURL": "https://www.google.com",
     }))
-    actions.append(getvar("videoURL"))
-    actions.append(if_begin(g_input, "Does Not Have Any Value"))
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test A passed",
+        "WFAlertActionMessage": "Simple GET worked",
+    }))
+
+    # --- Test B: Simple GET to cobalt API ---
+    actions.append(act("downloadurl", {
+        "WFURL": API_URL,
+    }))
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test B passed",
+        "WFAlertActionMessage": "GET to cobalt API worked",
+    }))
+
+    # --- Test C: POST with JSON body, NO headers ---
     actions.append(act("getclipboard"))
     actions.append(setvar("videoURL"))
-    actions.append(if_end(g_input))
-
-    # 7. API call
     actions.append(act("downloadurl", {
-        "UUID": new_uuid(),
+        "WFURL": API_URL,
+        "WFHTTPMethod": "POST",
+        "WFHTTPBodyType": "JSON",
+        "WFJSONValues": dict_value([
+            dict_item("url", var_text("videoURL")),
+        ]),
+    }))
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test C passed",
+        "WFAlertActionMessage": "POST with JSON body worked (may get 401)",
+    }))
+
+    # --- Test D: POST with JSON body AND headers ---
+    actions.append(act("downloadurl", {
         "Advanced": True,
         "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
         "WFHTTPHeaders": dict_value([
-            dict_item("Accept", text("application/json")),
-            dict_item("Content-Type", text("application/json")),
             dict_item("Authorization", text(f"Api-Key {API_KEY}")),
         ]),
         "WFHTTPBodyType": "JSON",
         "WFJSONValues": dict_value([
             dict_item("url", var_text("videoURL")),
-            dict_item("videoQuality", text("max")),
-            dict_item("filenameStyle", text("pretty")),
-            dict_item("youtubeVideoCodec", text("h264")),
         ]),
     }))
-
-    # 8. Save response
-    actions.append(setvar("apiResponse"))
-
-    # 9-10. Quick Look
-    actions.append(getvar("apiResponse"))
     actions.append(act("previewdocument"))
-
-    # 11-12. Copy to clipboard
-    actions.append(getvar("apiResponse"))
     actions.append(act("setclipboard"))
-
-    # 13-17. Download and save
-    actions.append(getkey("url", from_var="apiResponse"))
-    actions.append(setvar("downloadURL"))
-    actions.append(act("downloadurl", {"WFURL": var_text("downloadURL")}))
-    actions.append(act("savetocameraroll"))
-    actions.append(act("notification", {
-        "WFNotificationActionTitle": "Save Video (Debug)",
-        "WFNotificationActionBody": "Video saved! Response copied to clipboard.",
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test D passed",
+        "WFAlertActionMessage": "POST with headers worked! Response copied.",
     }))
 
     return actions
