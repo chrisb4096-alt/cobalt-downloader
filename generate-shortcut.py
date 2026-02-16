@@ -173,19 +173,11 @@ def build_actions():
 
     # --- API call ---
 
-    # 6. POST to cobalt API (UUID so we can reference its output)
-    actions.append(act("downloadurl", {
-        "UUID": api_post_uuid,
-        "ShowHeaders": True,
-        "WFURL": API_URL,
-        "WFHTTPMethod": "POST",
-        "WFHTTPHeaders": dict_value([
-            dict_item("Accept", text("application/json")),
-            dict_item("Content-Type", text("application/json")),
-            dict_item("Authorization", text(f"Api-Key {API_KEY}")),
-        ]),
-        "WFHTTPBodyType": "JSON",
-        "WFJSONValues": dict_value([
+    # 6. Build JSON body as Dictionary (like ChatGPT shortcut pattern)
+    body_uuid = new_uuid()
+    actions.append(act("dictionary", {
+        "UUID": body_uuid,
+        "WFItems": dict_value([
             dict_item("url", var_text("videoURL")),
             dict_item("videoQuality", text("max")),
             dict_item("filenameStyle", text("pretty")),
@@ -193,7 +185,22 @@ def build_actions():
         ]),
     }))
 
-    # 7. Save API response (explicit WFInput ref to downloadurl output)
+    # 7. POST to cobalt API with dict as File body (proven working pattern)
+    actions.append(act("downloadurl", {
+        "UUID": api_post_uuid,
+        "ShowHeaders": True,
+        "WFURL": API_URL,
+        "WFHTTPMethod": "POST",
+        "WFHTTPBodyType": "File",
+        "WFRequestVariable": output_ref(body_uuid, "Dictionary"),
+        "WFHTTPHeaders": dict_value([
+            dict_item("Content-Type", text("application/json")),
+            dict_item("Accept", text("application/json")),
+            dict_item("Authorization", text(f"Api-Key {API_KEY}")),
+        ]),
+    }))
+
+    # 8. Save API response (explicit WFInput ref to downloadurl output)
     actions.append(act("setvariable", {
         "WFVariableName": "apiResponse",
         "WFInput": output_ref(api_post_uuid, "Contents of URL"),
@@ -274,13 +281,14 @@ def build_actions():
 
 
 def build_debug_actions():
-    """Debug: GET clipboard first, then test POST with explicit output capture."""
+    """Debug: uses Dictionary + File body pattern (like ChatGPT shortcut)."""
     g_input = new_uuid()
+    body_uuid = new_uuid()
     api_post_uuid = new_uuid()
 
     actions = []
 
-    # 1. Get video URL from share sheet or clipboard FIRST (before anything else)
+    # 1. Get video URL from share sheet or clipboard
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
         "WFInput": shortcut_input(),
@@ -291,24 +299,17 @@ def build_debug_actions():
     actions.append(setvar("videoURL"))
     actions.append(if_end(g_input))
 
-    # 2. Show what URL we captured
+    # 2. Show captured URL
     actions.append(getvar("videoURL"))
     actions.append(act("alert", {
         "WFAlertActionTitle": "URL captured",
         "WFAlertActionMessage": var_text("videoURL"),
     }))
 
-    # 3. POST to cobalt API
-    actions.append(act("downloadurl", {
-        "UUID": api_post_uuid,
-        "ShowHeaders": True,
-        "WFURL": API_URL,
-        "WFHTTPMethod": "POST",
-        "WFHTTPHeaders": dict_value([
-            dict_item("Authorization", text(f"Api-Key {API_KEY}")),
-        ]),
-        "WFHTTPBodyType": "JSON",
-        "WFJSONValues": dict_value([
+    # 3. Build JSON body as Dictionary
+    actions.append(act("dictionary", {
+        "UUID": body_uuid,
+        "WFItems": dict_value([
             dict_item("url", var_text("videoURL")),
             dict_item("videoQuality", text("max")),
             dict_item("filenameStyle", text("pretty")),
@@ -316,17 +317,30 @@ def build_debug_actions():
         ]),
     }))
 
-    # 4. Capture response with explicit WFInput
+    # 4. POST with dict as File body + auth header
+    actions.append(act("downloadurl", {
+        "UUID": api_post_uuid,
+        "ShowHeaders": True,
+        "WFURL": API_URL,
+        "WFHTTPMethod": "POST",
+        "WFHTTPBodyType": "File",
+        "WFRequestVariable": output_ref(body_uuid, "Dictionary"),
+        "WFHTTPHeaders": dict_value([
+            dict_item("Content-Type", text("application/json")),
+            dict_item("Accept", text("application/json")),
+            dict_item("Authorization", text(f"Api-Key {API_KEY}")),
+        ]),
+    }))
+
+    # 5. Capture response with explicit WFInput
     actions.append(act("setvariable", {
         "WFVariableName": "apiResponse",
         "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
 
-    # 5. Show response
+    # 6. Show + copy response
     actions.append(getvar("apiResponse"))
     actions.append(act("previewdocument"))
-
-    # 6. Copy to clipboard
     actions.append(getvar("apiResponse"))
     actions.append(act("setclipboard"))
 
