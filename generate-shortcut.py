@@ -175,7 +175,13 @@ def build_actions():
     }))
     actions.append(if_end(g_input))
 
-    # 4. "Downloading..." banner so user knows it's working
+    # 4. Extract clean URL (some apps share "Check out: https://..." text)
+    actions.append(act("getvariable", {"WFVariable": var_ref("videoURL")}))
+    actions.append(act("detect.link"))
+    actions.append(act("getitemfromlist", {"WFItemSpecifier": "First Item"}))
+    actions.append(act("setvariable", {"WFVariableName": "videoURL"}))
+
+    # 5. "Downloading..." banner so user knows it's working
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Downloading...",
