@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Generate 'Save Video' iOS Shortcut (.shortcut binary plist)
-Uses only named variables + implicit input flow (no magic variable UUIDs).
+Format reverse-engineered from TVDL 4.1.0 (working reference shortcut).
 """
 import plistlib
 import uuid
@@ -33,10 +33,21 @@ def var_text(var_name):
 
 
 def var_ref(var_name):
-    """Direct reference to a named variable."""
+    """Direct reference to a named variable (for non-conditional WFInput)."""
     return {
         "Value": {"Type": "Variable", "VariableName": var_name},
         "WFSerializationType": "WFTextTokenAttachment",
+    }
+
+
+def cond_var(var_name):
+    """Variable reference for use in conditional WFInput (different wrapper format)."""
+    return {
+        "Type": "Variable",
+        "Variable": {
+            "Value": {"VariableName": var_name, "Type": "Variable"},
+            "WFSerializationType": "WFTextTokenAttachment",
+        },
     }
 
 
@@ -59,10 +70,16 @@ def dict_value(items):
 
 
 def act(identifier, params=None):
-    return {
+    a = {
         "WFWorkflowActionIdentifier": f"is.workflow.actions.{identifier}",
         "WFWorkflowActionParameters": params or {},
     }
+    # Add UUID to action params (matching TVDL pattern)
+    if params is None:
+        a["WFWorkflowActionParameters"] = {"UUID": new_uuid()}
+    else:
+        params.setdefault("UUID", new_uuid())
+    return a
 
 
 def setvar(name):
@@ -103,14 +120,14 @@ def build_actions():
         "GroupingIdentifier": g_input,
         "WFControlFlowMode": 0,
         "WFCondition": 99,
-        "WFInput": var_ref("videoURL"),
+        "WFInput": cond_var("videoURL"),
     }))
 
     # 3. Get Clipboard → overwrite videoURL
     actions.append(act("getclipboard"))
     actions.append(setvar("videoURL"))
 
-    # 4. End If (no else needed)
+    # 4. End If
     actions.append(act("conditional", {
         "GroupingIdentifier": g_input,
         "WFControlFlowMode": 2,
@@ -118,7 +135,7 @@ def build_actions():
 
     # --- API call ---
 
-    # 7. POST to cobalt API
+    # 5. POST to cobalt API
     actions.append(act("downloadurl", {
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
@@ -136,33 +153,34 @@ def build_actions():
         ]),
     }))
 
-    # 8. Save API response as named variable (implicit from POST)
+    # 6. Save API response
     actions.append(setvar("apiResponse"))
 
-    # 9. Get "status" from apiResponse → 10. Save as named var
+    # 7-8. Get "status" key → save
     actions.append(getkey("status", from_var="apiResponse"))
     actions.append(setvar("status"))
 
     # --- Error check ---
 
-    # 11. IF status contains "error"
+    # 9. IF status contains "error"
     actions.append(act("conditional", {
         "GroupingIdentifier": g_error,
         "WFControlFlowMode": 0,
         "WFCondition": 4,
         "WFConditionalActionString": "error",
-        "WFInput": var_ref("status"),
+        "WFInput": cond_var("status"),
     }))
 
-    # 12. Get "error" from apiResponse → 13. Save → 14. Show Alert
+    # 10-12. Get error message → save → alert
     actions.append(getkey("error", from_var="apiResponse"))
     actions.append(setvar("errorMsg"))
     actions.append(act("alert", {
         "WFAlertActionTitle": "Download Failed",
         "WFAlertActionMessage": var_text("errorMsg"),
+        "WFAlertActionCancelButtonShown": False,
     }))
 
-    # 15. Otherwise (success)
+    # 13. Otherwise (success)
     actions.append(act("conditional", {
         "GroupingIdentifier": g_error,
         "WFControlFlowMode": 1,
@@ -170,52 +188,52 @@ def build_actions():
 
     # --- Picker check (Instagram carousels) ---
 
-    # 16. IF status contains "picker"
+    # 14. IF status contains "picker"
     actions.append(act("conditional", {
         "GroupingIdentifier": g_picker,
         "WFControlFlowMode": 0,
         "WFCondition": 4,
         "WFConditionalActionString": "picker",
-        "WFInput": var_ref("status"),
+        "WFInput": cond_var("status"),
     }))
 
-    # 17. Get "picker" array → 18. First Item → 19. Get "url" → 20. Save as downloadURL
+    # 15-18. Get picker array → first item → get url → save
     actions.append(getkey("picker", from_var="apiResponse"))
     actions.append(act("getitemfromlist", {"WFItemSpecifier": "First Item"}))
-    actions.append(getkey("url"))  # implicit from list item
+    actions.append(getkey("url"))
     actions.append(setvar("downloadURL"))
 
-    # 21. Download → 22. Save to Photos → 23. Notify
+    # 19-21. Download → save to photos → notify
     actions.append(act("downloadurl", {"WFURL": var_text("downloadURL")}))
-    actions.append(act("savetocameraroll"))  # implicit from download
+    actions.append(act("savetocameraroll"))
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
     }))
 
-    # 24. Otherwise (tunnel/redirect)
+    # 22. Otherwise (tunnel/redirect)
     actions.append(act("conditional", {
         "GroupingIdentifier": g_picker,
         "WFControlFlowMode": 1,
     }))
 
-    # 25. Get "url" from apiResponse → 26. Save → 27. Download → 28. Save → 29. Notify
+    # 23-27. Get url → save → download → save to photos → notify
     actions.append(getkey("url", from_var="apiResponse"))
     actions.append(setvar("downloadURL"))
     actions.append(act("downloadurl", {"WFURL": var_text("downloadURL")}))
-    actions.append(act("savetocameraroll"))  # implicit from download
+    actions.append(act("savetocameraroll"))
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
     }))
 
-    # 30. End If (picker)
+    # 28. End If (picker)
     actions.append(act("conditional", {
         "GroupingIdentifier": g_picker,
         "WFControlFlowMode": 2,
     }))
 
-    # 31. End If (error)
+    # 29. End If (error)
     actions.append(act("conditional", {
         "GroupingIdentifier": g_error,
         "WFControlFlowMode": 2,
@@ -230,13 +248,13 @@ def build_debug_actions():
 
     actions = []
 
-    # 1-4: Input handling (set from share sheet, fallback to clipboard)
+    # 1-5: Input handling
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL", "WFInput": shortcut_input(),
     }))
     actions.append(act("conditional", {
         "GroupingIdentifier": g_input, "WFControlFlowMode": 0,
-        "WFCondition": 99, "WFInput": var_ref("videoURL"),
+        "WFCondition": 99, "WFInput": cond_var("videoURL"),
     }))
     actions.append(act("getclipboard"))
     actions.append(setvar("videoURL"))
@@ -244,7 +262,7 @@ def build_debug_actions():
         "GroupingIdentifier": g_input, "WFControlFlowMode": 2,
     }))
 
-    # 7. API call
+    # 6. API call
     actions.append(act("downloadurl", {
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
@@ -262,22 +280,22 @@ def build_debug_actions():
         ]),
     }))
 
-    # 8. Save response as named variable (implicit)
+    # 7. Save response
     actions.append(setvar("apiResponse"))
 
-    # 9. Load apiResponse → Quick Look (scrollable JSON viewer)
+    # 8-9. Quick Look
     actions.append(getvar("apiResponse"))
-    actions.append(act("previewdocument"))  # implicit from getvar
+    actions.append(act("previewdocument"))
 
-    # 10. Copy to clipboard
+    # 10-11. Copy to clipboard
     actions.append(getvar("apiResponse"))
-    actions.append(act("setclipboard"))  # implicit from getvar
+    actions.append(act("setclipboard"))
 
-    # 11. Try download: get "url" from apiResponse → save → download → save
+    # 12-16. Download and save
     actions.append(getkey("url", from_var="apiResponse"))
     actions.append(setvar("downloadURL"))
     actions.append(act("downloadurl", {"WFURL": var_text("downloadURL")}))
-    actions.append(act("savetocameraroll"))  # implicit
+    actions.append(act("savetocameraroll"))
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video (Debug)",
         "WFNotificationActionBody": "Video saved! Response copied to clipboard.",
