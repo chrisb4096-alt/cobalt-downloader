@@ -281,49 +281,76 @@ def build_actions():
 
 
 def build_debug_actions():
-    """Debug: POST to httpbin.org to see exactly what iOS sends."""
-    body_uuid = new_uuid()
-    post_uuid = new_uuid()
+    """Debug: 3 incremental POST tests to find what breaks.
+    A) Bare POST (no body, no headers)
+    B) POST + TVDL-style WFJSONValues
+    C) POST + ShowHeaders + WFHTTPHeaders
+    All to httpbin.org/post which always returns 200."""
+    a_uuid = new_uuid()
+    b_uuid = new_uuid()
+    c_uuid = new_uuid()
 
     actions = []
 
-    # 1. Build a simple dictionary body
-    actions.append(act("dictionary", {
-        "UUID": body_uuid,
-        "WFItems": dict_value([
-            dict_item("test", text("hello")),
-            dict_item("videoQuality", text("max")),
-        ]),
+    # --- Test A: Bare minimum POST ---
+    actions.append(act("downloadurl", {
+        "UUID": a_uuid,
+        "WFURL": "https://httpbin.org/post",
+        "WFHTTPMethod": "POST",
+    }))
+    actions.append(act("setvariable", {
+        "WFVariableName": "testA",
+        "WFInput": output_ref(a_uuid, "Contents of URL"),
+    }))
+    actions.append(getvar("testA"))
+    actions.append(act("setclipboard"))
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test A: bare POST",
+        "WFAlertActionMessage": "Done. Check clipboard for httpbin echo.",
     }))
 
-    # 2. POST to httpbin.org/post (echoes back exact request)
+    # --- Test B: POST + JSON body (TVDL pattern) ---
     actions.append(act("downloadurl", {
-        "UUID": post_uuid,
+        "UUID": b_uuid,
+        "WFURL": "https://httpbin.org/post",
+        "WFHTTPMethod": "POST",
+        "WFJSONValues": dict_value([
+            dict_item("test", text("hello")),
+        ]),
+    }))
+    actions.append(act("setvariable", {
+        "WFVariableName": "testB",
+        "WFInput": output_ref(b_uuid, "Contents of URL"),
+    }))
+    actions.append(getvar("testB"))
+    actions.append(act("setclipboard"))
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test B: POST+JSON",
+        "WFAlertActionMessage": "Done. Check clipboard.",
+    }))
+
+    # --- Test C: POST + headers ---
+    actions.append(act("downloadurl", {
+        "UUID": c_uuid,
         "ShowHeaders": True,
         "WFURL": "https://httpbin.org/post",
         "WFHTTPMethod": "POST",
-        "WFHTTPBodyType": "File",
-        "WFRequestVariable": output_ref(body_uuid, "Dictionary"),
         "WFHTTPHeaders": dict_value([
-            dict_item("Content-Type", text("application/json")),
             dict_item("Accept", text("application/json")),
-            dict_item("Authorization", text(f"Api-Key {API_KEY}")),
+        ]),
+        "WFJSONValues": dict_value([
+            dict_item("test", text("hello")),
         ]),
     }))
-
-    # 3. Capture + show + copy the echoed request
     actions.append(act("setvariable", {
-        "WFVariableName": "echoResult",
-        "WFInput": output_ref(post_uuid, "Contents of URL"),
+        "WFVariableName": "testC",
+        "WFInput": output_ref(c_uuid, "Contents of URL"),
     }))
-    actions.append(getvar("echoResult"))
-    actions.append(act("previewdocument"))
-    actions.append(getvar("echoResult"))
+    actions.append(getvar("testC"))
     actions.append(act("setclipboard"))
-
-    actions.append(act("notification", {
-        "WFNotificationActionTitle": "Debug done",
-        "WFNotificationActionBody": "httpbin echo copied to clipboard. Paste it!",
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test C: POST+headers",
+        "WFAlertActionMessage": "Done. Check clipboard.",
     }))
 
     return actions
