@@ -17,10 +17,7 @@ def new_uuid():
 
 
 def text(s):
-    return {
-        "Value": {"string": s, "attachmentsByRange": {}},
-        "WFSerializationType": "WFTextTokenString",
-    }
+    return {"Value": {"string": s}, "WFSerializationType": "WFTextTokenString"}
 
 
 def var_text(var_name):
@@ -179,7 +176,6 @@ def build_actions():
     # 6. POST to cobalt API (UUID so we can reference its output)
     actions.append(act("downloadurl", {
         "UUID": api_post_uuid,
-        "Advanced": True,
         "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
@@ -197,8 +193,11 @@ def build_actions():
         ]),
     }))
 
-    # 7. Save API response
-    actions.append(setvar("apiResponse"))
+    # 7. Save API response (explicit WFInput ref to downloadurl output)
+    actions.append(act("setvariable", {
+        "WFVariableName": "apiResponse",
+        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
+    }))
 
     # 8-9. Get "status" key → save
     actions.append(getkey("status", from_var="apiResponse"))
@@ -275,37 +274,37 @@ def build_actions():
 
 
 def build_debug_actions():
-    """Step-by-step diagnostic with alerts after each action.
-    Test 1: POST without headers (TVDL-style, will get 401 but proves action works)
-    Test 2: POST with headers (full cobalt request)
+    """Debug: captures downloadurl output via explicit WFInput (like TVDL).
+    Test 1: Simple GET (proves downloadurl works at all)
+    Test 2: Full POST with headers + explicit output capture
     """
+    test1_uuid = new_uuid()
+    test2_uuid = new_uuid()
+
     actions = []
 
-    # --- Step 1: Get clipboard URL ---
-    actions.append(act("getclipboard"))
-    actions.append(setvar("videoURL"))
-
-    # --- Test 1: POST without headers (matches TVDL format exactly) ---
-    # No Advanced, no ShowHeaders, no WFHTTPBodyType, no WFHTTPHeaders
+    # --- Test 1: Simple GET to cobalt API (returns version JSON) ---
     actions.append(act("downloadurl", {
-        "UUID": new_uuid(),
+        "UUID": test1_uuid,
         "WFURL": API_URL,
-        "WFHTTPMethod": "POST",
-        "WFJSONValues": dict_value([
-            dict_item("url", var_text("videoURL")),
-        ]),
     }))
-    actions.append(setvar("test1Result"))
+    # Capture output with EXPLICIT WFInput ref (like TVDL does)
+    actions.append(act("setvariable", {
+        "WFVariableName": "test1Result",
+        "WFInput": output_ref(test1_uuid, "Contents of URL"),
+    }))
     actions.append(getvar("test1Result"))
     actions.append(act("setclipboard"))
     actions.append(act("alert", {
-        "WFAlertActionTitle": "Test 1: No headers",
-        "WFAlertActionMessage": "POST without headers done. Response copied to clipboard. Check it!",
+        "WFAlertActionTitle": "Test 1: GET",
+        "WFAlertActionMessage": "Simple GET done. Result copied to clipboard.",
     }))
 
-    # --- Test 2: POST with Authorization header ---
+    # --- Test 2: Full POST with auth header ---
+    actions.append(act("getclipboard"))
+    actions.append(setvar("videoURL"))
     actions.append(act("downloadurl", {
-        "UUID": new_uuid(),
+        "UUID": test2_uuid,
         "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
@@ -320,13 +319,17 @@ def build_debug_actions():
             dict_item("youtubeVideoCodec", text("h264")),
         ]),
     }))
-    actions.append(setvar("test2Result"))
+    # Capture output with EXPLICIT WFInput ref
+    actions.append(act("setvariable", {
+        "WFVariableName": "test2Result",
+        "WFInput": output_ref(test2_uuid, "Contents of URL"),
+    }))
     actions.append(getvar("test2Result"))
     actions.append(act("previewdocument"))
     actions.append(getvar("test2Result"))
     actions.append(act("setclipboard"))
     actions.append(act("alert", {
-        "WFAlertActionTitle": "Test 2: With headers",
+        "WFAlertActionTitle": "Test 2: POST",
         "WFAlertActionMessage": "Full POST done. Response shown and copied.",
     }))
 
