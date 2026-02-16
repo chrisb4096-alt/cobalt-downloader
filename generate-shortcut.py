@@ -78,6 +78,13 @@ def output_text(action_uuid, output_name):
     }
 
 
+def shortcut_input():
+    return {
+        "Value": {"Type": "ExtensionInput"},
+        "WFSerializationType": "WFTextTokenAttachment",
+    }
+
+
 def var_ref(var_name):
     return {
         "Value": {"Type": "Variable", "VariableName": var_name},
@@ -133,6 +140,7 @@ def if_end(group_id):
 
 def build_actions():
     """Full shortcut matching iOS-native format."""
+    g_input = new_uuid()
     g_error = new_uuid()
     g_picker = new_uuid()
 
@@ -145,18 +153,29 @@ def build_actions():
 
     actions = []
 
-    # --- Input: Share Sheet or clipboard fallback ---
+    # --- Input: Share Sheet first, clipboard fallback ---
 
-    # 1. Get Clipboard
+    # 1. Set videoURL from Share Sheet input (empty if run manually)
+    input_uuid = new_uuid()
+    actions.append(act("setvariable", {
+        "UUID": input_uuid,
+        "WFVariableName": "videoURL",
+        "WFInput": shortcut_input(),
+    }))
+
+    # 2. Check if videoURL has a value
+    actions.append(act("getvariable", {"WFVariable": var_ref("videoURL")}))
+
+    # 3. If no Share Sheet input, fall back to clipboard
+    actions.append(if_begin(g_input, "Does Not Have Any Value"))
     actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
-
-    # 2. Set videoURL from clipboard
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
         "WFInput": output_ref(clipboard_uuid, "Clipboard"),
     }))
+    actions.append(if_end(g_input))
 
-    # 3. "Downloading..." banner so user knows it's working
+    # 4. "Downloading..." banner so user knows it's working
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Downloading...",
@@ -369,7 +388,7 @@ def make_shortcut(actions_fn, glyph=59746, color=946986751):
         "WFWorkflowActions": actions_fn(),
         "WFWorkflowClientVersion": "4407",
         "WFWorkflowHasOutputFallback": False,
-        "WFWorkflowHasShortcutInputVariables": False,
+        "WFWorkflowHasShortcutInputVariables": True,
         "WFWorkflowIcon": {
             "WFWorkflowIconGlyphNumber": glyph,
             "WFWorkflowIconStartColor": color,
