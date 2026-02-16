@@ -281,38 +281,31 @@ def build_actions():
 
 
 def build_debug_actions():
-    """v9: Bare POST to httpbin, no Quick Look. Just alert + clipboard."""
-    post_uuid = new_uuid()
-
+    """v10: Test implicit flow - downloadurl straight to setclipboard."""
     actions = []
 
-    # Version check - if you see this alert, you have the latest version
     actions.append(act("alert", {
-        "WFAlertActionTitle": "Debug v9",
-        "WFAlertActionMessage": "If you see this, you have the latest version.",
+        "WFAlertActionTitle": "Debug v10",
+        "WFAlertActionMessage": "Testing implicit flow (no variables).",
     }))
 
-    # Bare minimum POST to httpbin (no body, no headers)
+    # Test A: GET → setclipboard (implicit flow, no variables)
+    actions.append(act("downloadurl", {"WFURL": "https://httpbin.org/get"}))
+    actions.append(act("setclipboard"))
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test A: GET done",
+        "WFAlertActionMessage": "GET response copied. Paste to check!",
+    }))
+
+    # Test B: POST → setclipboard (implicit flow, no variables)
     actions.append(act("downloadurl", {
-        "UUID": post_uuid,
         "WFURL": "https://httpbin.org/post",
         "WFHTTPMethod": "POST",
     }))
-
-    # Capture response
-    actions.append(act("setvariable", {
-        "WFVariableName": "result",
-        "WFInput": output_ref(post_uuid, "Contents of URL"),
-    }))
-
-    # Copy to clipboard
-    actions.append(getvar("result"))
     actions.append(act("setclipboard"))
-
-    # Show result
     actions.append(act("alert", {
-        "WFAlertActionTitle": "POST result",
-        "WFAlertActionMessage": "Response copied to clipboard. Paste it somewhere!",
+        "WFAlertActionTitle": "Test B: POST done",
+        "WFAlertActionMessage": "POST response copied. Paste to check!",
     }))
 
     return actions
@@ -392,11 +385,10 @@ def generate_and_sign(name, actions_fn, color=463140863):
 if __name__ == "__main__":
     generate_and_sign("Save Video", build_actions)
     generate_and_sign("Save Video Debug", build_debug_actions, color=4282601983)
-    # Fresh filename to bust GitHub CDN cache
-    generate_and_sign("Debug v9", build_debug_actions, color=4282601983)
+    generate_and_sign("Debug v10", build_debug_actions, color=4282601983)
 
     print()
     print("Install on iPhone (open in Safari):")
     print("  Main:  https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Save%20Video%20(Signed).shortcut")
     print("  Debug: https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Save%20Video%20Debug%20(Signed).shortcut")
-    print("  v9:    https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Debug%20v9%20(Signed).shortcut")
+    print("  v10:   https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Debug%20v10%20(Signed).shortcut")
