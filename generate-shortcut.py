@@ -281,47 +281,26 @@ def build_actions():
 
 
 def build_debug_actions():
-    """Debug: uses Dictionary + File body pattern (like ChatGPT shortcut)."""
-    g_input = new_uuid()
+    """Debug: POST to httpbin.org to see exactly what iOS sends."""
     body_uuid = new_uuid()
-    api_post_uuid = new_uuid()
+    post_uuid = new_uuid()
 
     actions = []
 
-    # 1. Get video URL from share sheet or clipboard
-    actions.append(act("setvariable", {
-        "WFVariableName": "videoURL",
-        "WFInput": shortcut_input(),
-    }))
-    actions.append(getvar("videoURL"))
-    actions.append(if_begin(g_input, "Does Not Have Any Value"))
-    actions.append(act("getclipboard"))
-    actions.append(setvar("videoURL"))
-    actions.append(if_end(g_input))
-
-    # 2. Show captured URL
-    actions.append(getvar("videoURL"))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "URL captured",
-        "WFAlertActionMessage": var_text("videoURL"),
-    }))
-
-    # 3. Build JSON body as Dictionary
+    # 1. Build a simple dictionary body
     actions.append(act("dictionary", {
         "UUID": body_uuid,
         "WFItems": dict_value([
-            dict_item("url", var_text("videoURL")),
+            dict_item("test", text("hello")),
             dict_item("videoQuality", text("max")),
-            dict_item("filenameStyle", text("pretty")),
-            dict_item("youtubeVideoCodec", text("h264")),
         ]),
     }))
 
-    # 4. POST with dict as File body + auth header
+    # 2. POST to httpbin.org/post (echoes back exact request)
     actions.append(act("downloadurl", {
-        "UUID": api_post_uuid,
+        "UUID": post_uuid,
         "ShowHeaders": True,
-        "WFURL": API_URL,
+        "WFURL": "https://httpbin.org/post",
         "WFHTTPMethod": "POST",
         "WFHTTPBodyType": "File",
         "WFRequestVariable": output_ref(body_uuid, "Dictionary"),
@@ -332,21 +311,19 @@ def build_debug_actions():
         ]),
     }))
 
-    # 5. Capture response with explicit WFInput
+    # 3. Capture + show + copy the echoed request
     actions.append(act("setvariable", {
-        "WFVariableName": "apiResponse",
-        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
+        "WFVariableName": "echoResult",
+        "WFInput": output_ref(post_uuid, "Contents of URL"),
     }))
-
-    # 6. Show + copy response
-    actions.append(getvar("apiResponse"))
+    actions.append(getvar("echoResult"))
     actions.append(act("previewdocument"))
-    actions.append(getvar("apiResponse"))
+    actions.append(getvar("echoResult"))
     actions.append(act("setclipboard"))
 
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Debug done",
-        "WFNotificationActionBody": "API response copied to clipboard.",
+        "WFNotificationActionBody": "httpbin echo copied to clipboard. Paste it!",
     }))
 
     return actions
