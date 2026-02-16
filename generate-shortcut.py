@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate 'Save Video' iOS Shortcut (.shortcut binary plist)
-Uses string WFCondition values + implicit input flow (no WFInput in conditionals).
-Format validated against ScPL compiler output and shortcuts-toolkit.
+Format reverse-engineered from working iOS-built shortcut (Feb 2026).
+Key patterns: WFHTTPBodyType JSON + WFJSONValues, explicit WFInput ActionOutput
+refs with UUIDs, WFCoercionVariableAggrandizement for URL type coercion.
 """
 import plistlib
 import uuid
@@ -21,37 +22,18 @@ def text(s):
 
 
 def var_text(var_name):
-    """Text field containing a named variable reference."""
     return {
         "Value": {
+            "string": "\ufffc",
             "attachmentsByRange": {
                 "{0, 1}": {"Type": "Variable", "VariableName": var_name}
             },
-            "string": "\ufffc",
-        },
-        "WFSerializationType": "WFTextTokenString",
-    }
-
-
-def output_text(action_uuid, output_name):
-    """Text field referencing a specific action's output by UUID."""
-    return {
-        "Value": {
-            "attachmentsByRange": {
-                "{0, 1}": {
-                    "Type": "ActionOutput",
-                    "OutputUUID": action_uuid,
-                    "OutputName": output_name,
-                }
-            },
-            "string": "\ufffc",
         },
         "WFSerializationType": "WFTextTokenString",
     }
 
 
 def output_ref(action_uuid, output_name):
-    """Direct reference to a specific action's output by UUID."""
     return {
         "Value": {
             "Type": "ActionOutput",
@@ -62,17 +44,43 @@ def output_ref(action_uuid, output_name):
     }
 
 
-def var_ref(var_name):
-    """Direct reference to a named variable."""
+def output_ref_as_url(action_uuid, output_name):
+    """Reference with URL type coercion (the key fix for 'rich text to URL')."""
     return {
-        "Value": {"Type": "Variable", "VariableName": var_name},
+        "Value": {
+            "Type": "ActionOutput",
+            "OutputUUID": action_uuid,
+            "OutputName": output_name,
+            "Aggrandizements": [
+                {
+                    "Type": "WFCoercionVariableAggrandizement",
+                    "CoercionItemClass": "WFURLContentItem",
+                }
+            ],
+        },
         "WFSerializationType": "WFTextTokenAttachment",
     }
 
 
-def shortcut_input():
+def output_text(action_uuid, output_name):
     return {
-        "Value": {"Type": "ExtensionInput"},
+        "Value": {
+            "string": "\ufffc",
+            "attachmentsByRange": {
+                "{0, 1}": {
+                    "Type": "ActionOutput",
+                    "OutputUUID": action_uuid,
+                    "OutputName": output_name,
+                }
+            },
+        },
+        "WFSerializationType": "WFTextTokenString",
+    }
+
+
+def var_ref(var_name):
+    return {
+        "Value": {"Type": "Variable", "VariableName": var_name},
         "WFSerializationType": "WFTextTokenAttachment",
     }
 
@@ -89,31 +97,16 @@ def dict_value(items):
 
 
 def act(identifier, params=None):
+    p = params or {}
+    if "UUID" not in p:
+        p["UUID"] = new_uuid()
     return {
         "WFWorkflowActionIdentifier": f"is.workflow.actions.{identifier}",
-        "WFWorkflowActionParameters": params or {},
+        "WFWorkflowActionParameters": p,
     }
 
 
-def setvar(name):
-    return act("setvariable", {"WFVariableName": name})
-
-
-def getvar(name):
-    return act("getvariable", {"WFVariable": var_ref(name)})
-
-
-def getkey(key, from_var=None):
-    params = {"WFDictionaryKey": key}
-    if from_var:
-        params["WFInput"] = var_ref(from_var)
-    return act("getvalueforkey", params)
-
-
 def if_begin(group_id, condition, value=None):
-    """If block start. Condition is a STRING: 'Contains', 'Equals',
-    'Has Any Value', 'Does Not Have Any Value', etc.
-    Input comes implicitly from previous action (no WFInput)."""
     params = {
         "GroupingIdentifier": group_id,
         "WFControlFlowMode": 0,
@@ -139,60 +132,49 @@ def if_end(group_id):
 
 
 def build_actions():
+    """Full shortcut matching iOS-native format."""
     g_input = new_uuid()
     g_error = new_uuid()
     g_picker = new_uuid()
 
-    # UUIDs for actions whose output we reference later
+    # UUIDs for actions whose output we reference
+    clipboard_uuid = new_uuid()
     api_post_uuid = new_uuid()
+    geturl_uuid = new_uuid()
+    download_uuid = new_uuid()
+    save_uuid = new_uuid()
     picker_geturl_uuid = new_uuid()
-    direct_geturl_uuid = new_uuid()
+    picker_download_uuid = new_uuid()
+    picker_save_uuid = new_uuid()
 
     actions = []
 
-    # --- Input handling ---
+    # --- Input: Share Sheet or clipboard fallback ---
 
-    # 1. Set videoURL from Shortcut Input (may be empty if run manually)
+    # 1. Get Clipboard
+    actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
+
+    # 2. Set videoURL from clipboard
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": shortcut_input(),
+        "WFInput": output_ref(clipboard_uuid, "Clipboard"),
     }))
 
-    # 2. Load videoURL into implicit flow for the If check
-    actions.append(getvar("videoURL"))
+    # --- API POST (JSON body + headers, matching working shortcut exactly) ---
 
-    # 3. IF [implicit] does not have any value → get from clipboard
-    actions.append(if_begin(g_input, "Does Not Have Any Value"))
-
-    # 4. Get Clipboard → overwrite videoURL
-    actions.append(act("getclipboard"))
-    actions.append(setvar("videoURL"))
-
-    # 5. End If
-    actions.append(if_end(g_input))
-
-    # --- API call ---
-
-    # 6. Build JSON body as Dictionary (like ChatGPT shortcut pattern)
-    body_uuid = new_uuid()
-    actions.append(act("dictionary", {
-        "UUID": body_uuid,
-        "WFItems": dict_value([
-            dict_item("url", var_text("videoURL")),
-            dict_item("videoQuality", text("max")),
-            dict_item("filenameStyle", text("pretty")),
-            dict_item("youtubeVideoCodec", text("h264")),
-        ]),
-    }))
-
-    # 7. POST to cobalt API with dict as File body (proven working pattern)
+    # 3. POST to cobalt API
     actions.append(act("downloadurl", {
         "UUID": api_post_uuid,
         "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
-        "WFHTTPBodyType": "File",
-        "WFRequestVariable": output_ref(body_uuid, "Dictionary"),
+        "WFHTTPBodyType": "JSON",
+        "WFJSONValues": dict_value([
+            dict_item("url", var_text("videoURL")),
+            dict_item("videoQuality", text("max")),
+            dict_item("filenameStyle", text("pretty")),
+            dict_item("youtubeVideoCodec", text("h264")),
+        ]),
         "WFHTTPHeaders": dict_value([
             dict_item("Content-Type", text("application/json")),
             dict_item("Accept", text("application/json")),
@@ -200,112 +182,169 @@ def build_actions():
         ]),
     }))
 
-    # 8. Save API response (explicit WFInput ref to downloadurl output)
+    # 4. Save API response
     actions.append(act("setvariable", {
         "WFVariableName": "apiResponse",
         "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
 
-    # 8-9. Get "status" key → save
-    actions.append(getkey("status", from_var="apiResponse"))
-    actions.append(setvar("status"))
+    # 5. Get "status" key
+    status_uuid = new_uuid()
+    actions.append(act("getvalueforkey", {
+        "UUID": status_uuid,
+        "WFDictionaryKey": "status",
+        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
+    }))
+    actions.append(act("setvariable", {
+        "WFVariableName": "status",
+        "WFInput": output_ref(status_uuid, "Dictionary Value"),
+    }))
 
     # --- Error check ---
 
-    # 10. Load status into flow, then IF contains "error"
-    actions.append(getvar("status"))
+    # 6. IF status contains "error"
+    actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
     actions.append(if_begin(g_error, "Contains", "error"))
 
-    # 11-13. Get error message → save → alert
-    actions.append(getkey("error", from_var="apiResponse"))
-    actions.append(setvar("errorMsg"))
+    # 7. Show error
+    error_key_uuid = new_uuid()
+    actions.append(act("getvalueforkey", {
+        "UUID": error_key_uuid,
+        "WFDictionaryKey": "error",
+        "WFInput": var_ref("apiResponse"),
+    }))
+    actions.append(act("setvariable", {
+        "WFVariableName": "errorMsg",
+        "WFInput": output_ref(error_key_uuid, "Dictionary Value"),
+    }))
     actions.append(act("alert", {
         "WFAlertActionTitle": "Download Failed",
         "WFAlertActionMessage": var_text("errorMsg"),
     }))
 
-    # 14. Otherwise (success)
+    # 8. Otherwise (success)
     actions.append(if_else(g_error))
 
     # --- Picker check (Instagram carousels) ---
 
-    # 15. Load status, IF contains "picker"
-    actions.append(getvar("status"))
+    # 9. IF status contains "picker"
+    actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
     actions.append(if_begin(g_picker, "Contains", "picker"))
 
-    # 16-18. Get picker array → first item → get url (with UUID)
-    actions.append(getkey("picker", from_var="apiResponse"))
+    # 10. Get picker → first item → url
+    actions.append(act("getvalueforkey", {
+        "WFDictionaryKey": "picker",
+        "WFInput": var_ref("apiResponse"),
+    }))
     actions.append(act("getitemfromlist", {"WFItemSpecifier": "First Item"}))
     actions.append(act("getvalueforkey", {
         "UUID": picker_geturl_uuid,
         "WFDictionaryKey": "url",
     }))
 
-    # 19-21. Download using ActionOutput ref → save to photos → notify
-    actions.append(act("downloadurl", {
-        "WFURL": output_text(picker_geturl_uuid, "Dictionary Value"),
+    # 11. Set downloadURL with URL coercion, download, save, notify
+    actions.append(act("setvariable", {
+        "WFVariableName": "downloadURL",
+        "WFInput": output_ref_as_url(picker_geturl_uuid, "Dictionary Value"),
     }))
-    actions.append(act("savetocameraroll"))
+    actions.append(act("downloadurl", {
+        "UUID": picker_download_uuid,
+        "WFURL": var_text("downloadURL"),
+        "ShowHeaders": True,
+    }))
+    actions.append(act("savetocameraroll", {
+        "UUID": picker_save_uuid,
+        "WFInput": output_ref(picker_download_uuid, "Contents of URL"),
+    }))
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
     }))
 
-    # 22. Otherwise (tunnel/redirect)
+    # 12. Otherwise (tunnel/redirect)
     actions.append(if_else(g_picker))
 
-    # 23. Get url from apiResponse (with UUID)
+    # 13. Get url from apiResponse with URL coercion
     actions.append(act("getvalueforkey", {
-        "UUID": direct_geturl_uuid,
+        "UUID": geturl_uuid,
         "WFDictionaryKey": "url",
         "WFInput": var_ref("apiResponse"),
     }))
-
-    # 24-26. Download using ActionOutput ref → save to photos → notify
-    actions.append(act("downloadurl", {
-        "WFURL": output_text(direct_geturl_uuid, "Dictionary Value"),
+    actions.append(act("setvariable", {
+        "WFVariableName": "downloadURL",
+        "WFInput": output_ref_as_url(geturl_uuid, "Dictionary Value"),
     }))
-    actions.append(act("savetocameraroll"))
+
+    # 14. Download, save, notify
+    actions.append(act("downloadurl", {
+        "UUID": download_uuid,
+        "WFURL": var_text("downloadURL"),
+        "ShowHeaders": True,
+    }))
+    actions.append(act("savetocameraroll", {
+        "UUID": save_uuid,
+        "WFInput": output_ref(download_uuid, "Contents of URL"),
+    }))
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
     }))
 
-    # 27. End If (picker)
+    # 15. End If (picker)
     actions.append(if_end(g_picker))
 
-    # 28. End If (error)
+    # 16. End If (error)
     actions.append(if_end(g_error))
 
     return actions
 
 
 def build_debug_actions():
-    """v10: Test implicit flow - downloadurl straight to setclipboard."""
+    """Debug version: shows API response and copies to clipboard."""
+    clipboard_uuid = new_uuid()
+    api_post_uuid = new_uuid()
+
     actions = []
 
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Debug v10",
-        "WFAlertActionMessage": "Testing implicit flow (no variables).",
+    # 1. Get Clipboard → videoURL
+    actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
+    actions.append(act("setvariable", {
+        "WFVariableName": "videoURL",
+        "WFInput": output_ref(clipboard_uuid, "Clipboard"),
     }))
 
-    # Test A: GET → setclipboard (implicit flow, no variables)
-    actions.append(act("downloadurl", {"WFURL": "https://httpbin.org/get"}))
-    actions.append(act("setclipboard"))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test A: GET done",
-        "WFAlertActionMessage": "GET response copied. Paste to check!",
-    }))
-
-    # Test B: POST → setclipboard (implicit flow, no variables)
+    # 2. POST to cobalt API
     actions.append(act("downloadurl", {
-        "WFURL": "https://httpbin.org/post",
+        "UUID": api_post_uuid,
+        "ShowHeaders": True,
+        "WFURL": API_URL,
         "WFHTTPMethod": "POST",
+        "WFHTTPBodyType": "JSON",
+        "WFJSONValues": dict_value([
+            dict_item("url", var_text("videoURL")),
+            dict_item("videoQuality", text("max")),
+            dict_item("filenameStyle", text("pretty")),
+            dict_item("youtubeVideoCodec", text("h264")),
+        ]),
+        "WFHTTPHeaders": dict_value([
+            dict_item("Content-Type", text("application/json")),
+            dict_item("Accept", text("application/json")),
+            dict_item("Authorization", text(f"Api-Key {API_KEY}")),
+        ]),
     }))
+
+    # 3. Save response → Quick Look → Copy to Clipboard
+    actions.append(act("setvariable", {
+        "WFVariableName": "apiResponse",
+        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
+    }))
+    actions.append(act("getvariable", {"WFVariable": var_ref("apiResponse")}))
+    actions.append(act("quicklook"))
+    actions.append(act("getvariable", {"WFVariable": var_ref("apiResponse")}))
     actions.append(act("setclipboard"))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test B: POST done",
-        "WFAlertActionMessage": "POST response copied. Paste to check!",
+    actions.append(act("notification", {
+        "WFNotificationActionTitle": "Save Video Debug",
+        "WFNotificationActionBody": "API response copied to clipboard.",
     }))
 
     return actions
@@ -314,21 +353,39 @@ def build_debug_actions():
 def make_shortcut(actions_fn, glyph=59511, color=463140863):
     return {
         "WFWorkflowActions": actions_fn(),
-        "WFWorkflowClientVersion": "2612.0.15",
+        "WFWorkflowClientVersion": "4407",
         "WFWorkflowHasOutputFallback": False,
-        "WFWorkflowHasShortcutInputVariables": True,
+        "WFWorkflowHasShortcutInputVariables": False,
         "WFWorkflowIcon": {
             "WFWorkflowIconGlyphNumber": glyph,
             "WFWorkflowIconStartColor": color,
         },
         "WFWorkflowImportQuestions": [],
         "WFWorkflowInputContentItemClasses": [
-            "WFURLContentItem",
+            "WFAppContentItem",
+            "WFAppStoreAppContentItem",
+            "WFArticleContentItem",
+            "WFContactContentItem",
+            "WFDateContentItem",
+            "WFEmailAddressContentItem",
+            "WFFolderContentItem",
+            "WFGenericFileContentItem",
+            "WFImageContentItem",
+            "WFiTunesProductContentItem",
+            "WFLocationContentItem",
+            "WFDCMapsLinkContentItem",
+            "WFAVAssetContentItem",
+            "WFPDFContentItem",
+            "WFPhoneNumberContentItem",
+            "WFRichTextContentItem",
+            "WFSafariWebPageContentItem",
             "WFStringContentItem",
+            "WFURLContentItem",
         ],
         "WFWorkflowMinimumClientVersion": 900,
         "WFWorkflowMinimumClientVersionString": "900",
         "WFWorkflowOutputContentItemClasses": [],
+        "WFQuickActionSurfaces": [],
         "WFWorkflowTypes": ["ActionExtension", "NCWidget", "WatchKit"],
     }
 
@@ -385,10 +442,8 @@ def generate_and_sign(name, actions_fn, color=463140863):
 if __name__ == "__main__":
     generate_and_sign("Save Video", build_actions)
     generate_and_sign("Save Video Debug", build_debug_actions, color=4282601983)
-    generate_and_sign("Debug v10", build_debug_actions, color=4282601983)
 
     print()
     print("Install on iPhone (open in Safari):")
     print("  Main:  https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Save%20Video%20(Signed).shortcut")
     print("  Debug: https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Save%20Video%20Debug%20(Signed).shortcut")
-    print("  v10:   https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Debug%20v10%20(Signed).shortcut")
