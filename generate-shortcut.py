@@ -312,15 +312,141 @@ def create_shortcut():
     }
 
 
+def build_debug_actions():
+    """Debug version: shows full API response before downloading."""
+    g_input = new_uuid()
+    u_clipboard = new_uuid()
+    u_api = new_uuid()
+    u_response_text = new_uuid()
+    u_get_url = new_uuid()
+    u_dl = new_uuid()
+
+    actions = []
+
+    # 1-6: Same input handling
+    actions.append(action("is.workflow.actions.conditional", {
+        "GroupingIdentifier": g_input, "WFControlFlowMode": 0,
+        "WFCondition": 100, "WFInput": shortcut_input(),
+    }))
+    actions.append(action("is.workflow.actions.setvariable", {
+        "WFVariableName": "videoURL", "WFInput": shortcut_input(),
+    }))
+    actions.append(action("is.workflow.actions.conditional", {
+        "GroupingIdentifier": g_input, "WFControlFlowMode": 1,
+    }))
+    actions.append(action("is.workflow.actions.getclipboard", {}, u_clipboard))
+    actions.append(action("is.workflow.actions.setvariable", {
+        "WFVariableName": "videoURL",
+        "WFInput": output_ref(u_clipboard, "Clipboard"),
+    }))
+    actions.append(action("is.workflow.actions.conditional", {
+        "GroupingIdentifier": g_input, "WFControlFlowMode": 2,
+    }))
+
+    # 7. API call
+    actions.append(action("is.workflow.actions.downloadurl", {
+        "WFURL": API_URL,
+        "WFHTTPMethod": "POST",
+        "WFHTTPHeaders": dict_value([
+            dict_item("Accept", text("application/json")),
+            dict_item("Content-Type", text("application/json")),
+            dict_item("Authorization", text(f"Api-Key {API_KEY}")),
+        ]),
+        "WFHTTPBodyType": "JSON",
+        "WFJSONValues": dict_value([
+            dict_item("url", var_text("videoURL")),
+            dict_item("videoQuality", text("max")),
+            dict_item("filenameStyle", text("pretty")),
+            dict_item("youtubeVideoCodec", text("h264")),
+        ]),
+    }, u_api))
+
+    # 8. Set variable to preserve response
+    actions.append(action("is.workflow.actions.setvariable", {
+        "WFVariableName": "apiResponse",
+        "WFInput": output_ref(u_api, "Contents of URL"),
+    }))
+
+    # 9. Convert response to text for display
+    actions.append(action("is.workflow.actions.detect.text", {
+        "WFInput": output_ref(u_api, "Contents of URL"),
+    }, u_response_text))
+
+    # 10. Show full response in Quick Look (scrollable)
+    actions.append(action("is.workflow.actions.previewdocument", {
+        "WFInput": output_ref(u_response_text, "Text"),
+    }))
+
+    # 11. Copy response to clipboard for easy sharing
+    actions.append(action("is.workflow.actions.setclipboard", {
+        "WFInput": output_ref(u_response_text, "Text"),
+    }))
+
+    # 12. Try to download anyway - get "url" from response
+    actions.append(action("is.workflow.actions.getvalueforkey", {
+        "WFDictionaryKey": "url",
+        "WFInput": var_ref("apiResponse"),
+    }, u_get_url))
+
+    # 13. Download video
+    actions.append(action("is.workflow.actions.downloadurl", {
+        "WFURL": output_text(u_get_url, "Dictionary Value"),
+    }, u_dl))
+
+    # 14. Save to Photos
+    actions.append(action("is.workflow.actions.savetocameraroll", {
+        "WFInput": output_ref(u_dl, "Contents of URL"),
+    }))
+
+    # 15. Notification
+    actions.append(action("is.workflow.actions.notification", {
+        "WFNotificationActionTitle": "Save Video (Debug)",
+        "WFNotificationActionBody": "Video saved! Response was copied to clipboard.",
+    }))
+
+    return actions
+
+
+def create_debug_shortcut():
+    return {
+        "WFWorkflowActions": build_debug_actions(),
+        "WFWorkflowClientVersion": "2612.0.15",
+        "WFWorkflowHasOutputFallback": False,
+        "WFWorkflowHasShortcutInputVariables": True,
+        "WFWorkflowIcon": {
+            "WFWorkflowIconGlyphNumber": 59511,
+            "WFWorkflowIconStartColor": 4282601983,  # orange for debug
+        },
+        "WFWorkflowImportQuestions": [],
+        "WFWorkflowInputContentItemClasses": [
+            "WFURLContentItem",
+            "WFStringContentItem",
+        ],
+        "WFWorkflowMinimumClientVersion": 900,
+        "WFWorkflowMinimumClientVersionString": "900",
+        "WFWorkflowOutputContentItemClasses": [],
+        "WFWorkflowTypes": ["ActionExtension", "NCWidget", "WatchKit"],
+    }
+
+
 if __name__ == "__main__":
+    base = os.path.dirname(os.path.abspath(__file__))
+
+    # Main shortcut
     shortcut = create_shortcut()
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Save Video.shortcut")
+    out = os.path.join(base, "Save Video.shortcut")
     with open(out, "wb") as f:
         plistlib.dump(shortcut, f, fmt=plistlib.FMT_BINARY)
-    print(f"Generated: {out}")
-    print(f"Size: {os.path.getsize(out)} bytes")
+    print(f"Generated: {out} ({os.path.getsize(out)} bytes)")
+
+    # Debug shortcut
+    debug = create_debug_shortcut()
+    out_debug = os.path.join(base, "Save Video (Debug).shortcut")
+    with open(out_debug, "wb") as f:
+        plistlib.dump(debug, f, fmt=plistlib.FMT_BINARY)
+    print(f"Generated: {out_debug} ({os.path.getsize(out_debug)} bytes)")
+
     print()
-    print("To install on iPhone:")
-    print("  1. AirDrop this file to your iPhone, OR")
-    print("  2. Put it in iCloud Drive and open it on your iPhone, OR")
-    print("  3. Upload to GitHub and open the raw URL on your iPhone")
+    print("Install on iPhone:")
+    print("  Open on iPhone: https://github.com/chrisb4096-alt/cobalt-downloader")
+    print("  Tap the .shortcut file > Download raw file > Open in Shortcuts")
