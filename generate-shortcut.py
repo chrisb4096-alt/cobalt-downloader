@@ -274,37 +274,33 @@ def build_actions():
 
 
 def build_debug_actions():
-    """Debug: captures downloadurl output via explicit WFInput (like TVDL).
-    Test 1: Simple GET (proves downloadurl works at all)
-    Test 2: Full POST with headers + explicit output capture
-    """
-    test1_uuid = new_uuid()
-    test2_uuid = new_uuid()
+    """Debug: GET clipboard first, then test POST with explicit output capture."""
+    g_input = new_uuid()
+    api_post_uuid = new_uuid()
 
     actions = []
 
-    # --- Test 1: Simple GET to cobalt API (returns version JSON) ---
-    actions.append(act("downloadurl", {
-        "UUID": test1_uuid,
-        "WFURL": API_URL,
-    }))
-    # Capture output with EXPLICIT WFInput ref (like TVDL does)
+    # 1. Get video URL from share sheet or clipboard FIRST (before anything else)
     actions.append(act("setvariable", {
-        "WFVariableName": "test1Result",
-        "WFInput": output_ref(test1_uuid, "Contents of URL"),
+        "WFVariableName": "videoURL",
+        "WFInput": shortcut_input(),
     }))
-    actions.append(getvar("test1Result"))
-    actions.append(act("setclipboard"))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test 1: GET",
-        "WFAlertActionMessage": "Simple GET done. Result copied to clipboard.",
-    }))
-
-    # --- Test 2: Full POST with auth header ---
+    actions.append(getvar("videoURL"))
+    actions.append(if_begin(g_input, "Does Not Have Any Value"))
     actions.append(act("getclipboard"))
     actions.append(setvar("videoURL"))
+    actions.append(if_end(g_input))
+
+    # 2. Show what URL we captured
+    actions.append(getvar("videoURL"))
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "URL captured",
+        "WFAlertActionMessage": var_text("videoURL"),
+    }))
+
+    # 3. POST to cobalt API
     actions.append(act("downloadurl", {
-        "UUID": test2_uuid,
+        "UUID": api_post_uuid,
         "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
@@ -319,18 +315,24 @@ def build_debug_actions():
             dict_item("youtubeVideoCodec", text("h264")),
         ]),
     }))
-    # Capture output with EXPLICIT WFInput ref
+
+    # 4. Capture response with explicit WFInput
     actions.append(act("setvariable", {
-        "WFVariableName": "test2Result",
-        "WFInput": output_ref(test2_uuid, "Contents of URL"),
+        "WFVariableName": "apiResponse",
+        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
-    actions.append(getvar("test2Result"))
+
+    # 5. Show response
+    actions.append(getvar("apiResponse"))
     actions.append(act("previewdocument"))
-    actions.append(getvar("test2Result"))
+
+    # 6. Copy to clipboard
+    actions.append(getvar("apiResponse"))
     actions.append(act("setclipboard"))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test 2: POST",
-        "WFAlertActionMessage": "Full POST done. Response shown and copied.",
+
+    actions.append(act("notification", {
+        "WFNotificationActionTitle": "Debug done",
+        "WFNotificationActionBody": "API response copied to clipboard.",
     }))
 
     return actions
