@@ -429,24 +429,70 @@ def create_debug_shortcut():
     }
 
 
+HUBSIGN_URL = "https://hubsign.routinehub.services/sign"
+
+
+def sign_shortcut(unsigned_path, signed_path):
+    """Sign a .shortcut file via RoutineHub HubSign service."""
+    import urllib.request
+    import urllib.error
+
+    boundary = "----ShortcutBoundary"
+    filename = os.path.basename(unsigned_path)
+
+    with open(unsigned_path, "rb") as f:
+        file_data = f.read()
+
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="shortcut"; filename="{filename}"\r\n'
+        f"Content-Type: application/octet-stream\r\n\r\n"
+    ).encode() + file_data + f"\r\n--{boundary}--\r\n".encode()
+
+    req = urllib.request.Request(
+        HUBSIGN_URL,
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            signed_data = resp.read()
+            with open(signed_path, "wb") as f:
+                f.write(signed_data)
+            is_signed = signed_data[:4] == b"AEA1"
+            print(f"  Signed: {signed_path} ({len(signed_data)} bytes, AEA={is_signed})")
+            return is_signed
+    except urllib.error.URLError as e:
+        print(f"  Signing failed: {e}")
+        return False
+
+
 if __name__ == "__main__":
     base = os.path.dirname(os.path.abspath(__file__))
 
     # Main shortcut
     shortcut = create_shortcut()
-    out = os.path.join(base, "Save Video.shortcut")
-    with open(out, "wb") as f:
+    unsigned = os.path.join(base, "Save Video.shortcut")
+    with open(unsigned, "wb") as f:
         plistlib.dump(shortcut, f, fmt=plistlib.FMT_BINARY)
-    print(f"Generated: {out} ({os.path.getsize(out)} bytes)")
+    print(f"Generated: {unsigned} ({os.path.getsize(unsigned)} bytes)")
+
+    signed = os.path.join(base, "Save Video (Signed).shortcut")
+    sign_shortcut(unsigned, signed)
 
     # Debug shortcut
     debug = create_debug_shortcut()
-    out_debug = os.path.join(base, "Save Video (Debug).shortcut")
-    with open(out_debug, "wb") as f:
+    unsigned_dbg = os.path.join(base, "Save Video (Debug).shortcut")
+    with open(unsigned_dbg, "wb") as f:
         plistlib.dump(debug, f, fmt=plistlib.FMT_BINARY)
-    print(f"Generated: {out_debug} ({os.path.getsize(out_debug)} bytes)")
+    print(f"Generated: {unsigned_dbg} ({os.path.getsize(unsigned_dbg)} bytes)")
+
+    signed_dbg = os.path.join(base, "Save Video Debug (Signed).shortcut")
+    sign_shortcut(unsigned_dbg, signed_dbg)
 
     print()
-    print("Install on iPhone:")
-    print("  Open on iPhone: https://github.com/chrisb4096-alt/cobalt-downloader")
-    print("  Tap the .shortcut file > Download raw file > Open in Shortcuts")
+    print("Install on iPhone (open these links in Safari):")
+    print("  Main:  https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Save%20Video%20(Signed).shortcut")
+    print("  Debug: https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Save%20Video%20Debug%20(Signed).shortcut")
