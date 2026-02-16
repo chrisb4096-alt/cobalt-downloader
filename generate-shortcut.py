@@ -133,7 +133,6 @@ def if_end(group_id):
 
 def build_actions():
     """Full shortcut matching iOS-native format."""
-    g_input = new_uuid()
     g_error = new_uuid()
     g_picker = new_uuid()
 
@@ -143,9 +142,6 @@ def build_actions():
     geturl_uuid = new_uuid()
     download_uuid = new_uuid()
     save_uuid = new_uuid()
-    picker_geturl_uuid = new_uuid()
-    picker_download_uuid = new_uuid()
-    picker_save_uuid = new_uuid()
 
     actions = []
 
@@ -160,9 +156,15 @@ def build_actions():
         "WFInput": output_ref(clipboard_uuid, "Clipboard"),
     }))
 
+    # 3. "Downloading..." banner so user knows it's working
+    actions.append(act("notification", {
+        "WFNotificationActionTitle": "Save Video",
+        "WFNotificationActionBody": "Downloading...",
+    }))
+
     # --- API POST (JSON body + headers, matching working shortcut exactly) ---
 
-    # 3. POST to cobalt API
+    # 4. POST to cobalt API
     actions.append(act("downloadurl", {
         "UUID": api_post_uuid,
         "ShowHeaders": True,
@@ -182,13 +184,13 @@ def build_actions():
         ]),
     }))
 
-    # 4. Save API response
+    # 5. Save API response
     actions.append(act("setvariable", {
         "WFVariableName": "apiResponse",
         "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
 
-    # 5. Get "status" key
+    # 6. Get "status" key
     status_uuid = new_uuid()
     actions.append(act("getvalueforkey", {
         "UUID": status_uuid,
@@ -202,69 +204,81 @@ def build_actions():
 
     # --- Error check ---
 
-    # 6. IF status contains "error"
+    # 7. IF status contains "error"
     actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
     actions.append(if_begin(g_error, "Contains", "error"))
 
-    # 7. Show error
-    error_key_uuid = new_uuid()
-    actions.append(act("getvalueforkey", {
-        "UUID": error_key_uuid,
-        "WFDictionaryKey": "error",
-        "WFInput": var_ref("apiResponse"),
-    }))
-    actions.append(act("setvariable", {
-        "WFVariableName": "errorMsg",
-        "WFInput": output_ref(error_key_uuid, "Dictionary Value"),
-    }))
+    # 8. Show friendly error
     actions.append(act("alert", {
-        "WFAlertActionTitle": "Download Failed",
-        "WFAlertActionMessage": var_text("errorMsg"),
+        "WFAlertActionTitle": "Couldn't Save Video",
+        "WFAlertActionMessage": "This video couldn't be downloaded. "
+            "Make sure the link is valid and the content is publicly available.",
+        "WFAlertActionCancelButtonShown": False,
     }))
 
-    # 8. Otherwise (success)
+    # 9. Otherwise (success)
     actions.append(if_else(g_error))
 
     # --- Picker check (Instagram carousels) ---
 
-    # 9. IF status contains "picker"
+    # 10. IF status contains "picker"
     actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
     actions.append(if_begin(g_picker, "Contains", "picker"))
 
-    # 10. Get picker → first item → url
+    # 11. Get picker array
+    picker_key_uuid = new_uuid()
     actions.append(act("getvalueforkey", {
+        "UUID": picker_key_uuid,
         "WFDictionaryKey": "picker",
         "WFInput": var_ref("apiResponse"),
     }))
-    actions.append(act("getitemfromlist", {"WFItemSpecifier": "First Item"}))
-    actions.append(act("getvalueforkey", {
-        "UUID": picker_geturl_uuid,
-        "WFDictionaryKey": "url",
+
+    # 12. Repeat with Each item in picker array
+    loop_id = new_uuid()
+    repeat_uuid = new_uuid()
+    actions.append(act("repeat.each", {
+        "UUID": repeat_uuid,
+        "GroupingIdentifier": loop_id,
+        "WFControlFlowMode": 0,
+        "WFInput": output_ref(picker_key_uuid, "Dictionary Value"),
     }))
 
-    # 11. Set downloadURL with URL coercion, download, save, notify
+    # 13. Inside loop: get url from current item, coerce, download, save
+    item_url_uuid = new_uuid()
+    actions.append(act("getvalueforkey", {
+        "UUID": item_url_uuid,
+        "WFDictionaryKey": "url",
+        "WFInput": output_ref(repeat_uuid, "Repeat Item"),
+    }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref_as_url(picker_geturl_uuid, "Dictionary Value"),
+        "WFInput": output_ref_as_url(item_url_uuid, "Dictionary Value"),
     }))
+    item_dl_uuid = new_uuid()
     actions.append(act("downloadurl", {
-        "UUID": picker_download_uuid,
+        "UUID": item_dl_uuid,
         "WFURL": var_text("downloadURL"),
         "ShowHeaders": True,
     }))
     actions.append(act("savetocameraroll", {
-        "UUID": picker_save_uuid,
-        "WFInput": output_ref(picker_download_uuid, "Contents of URL"),
+        "WFInput": output_ref(item_dl_uuid, "Contents of URL"),
     }))
+
+    # 14. End Repeat
+    actions.append(act("repeat.each", {
+        "GroupingIdentifier": loop_id,
+        "WFControlFlowMode": 2,
+    }))
+
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
-        "WFNotificationActionBody": "Video saved!",
+        "WFNotificationActionBody": "All items saved!",
     }))
 
-    # 12. Otherwise (tunnel/redirect)
+    # 15. Otherwise (tunnel/redirect - single video)
     actions.append(if_else(g_picker))
 
-    # 13. Get url from apiResponse with URL coercion
+    # 16. Get url from apiResponse with URL coercion
     actions.append(act("getvalueforkey", {
         "UUID": geturl_uuid,
         "WFDictionaryKey": "url",
@@ -275,7 +289,7 @@ def build_actions():
         "WFInput": output_ref_as_url(geturl_uuid, "Dictionary Value"),
     }))
 
-    # 14. Download, save, notify
+    # 17. Download, save, notify
     actions.append(act("downloadurl", {
         "UUID": download_uuid,
         "WFURL": var_text("downloadURL"),
@@ -290,10 +304,10 @@ def build_actions():
         "WFNotificationActionBody": "Video saved!",
     }))
 
-    # 15. End If (picker)
+    # 18. End If (picker)
     actions.append(if_end(g_picker))
 
-    # 16. End If (error)
+    # 19. End If (error)
     actions.append(if_end(g_error))
 
     return actions
@@ -350,7 +364,7 @@ def build_debug_actions():
     return actions
 
 
-def make_shortcut(actions_fn, glyph=59511, color=463140863):
+def make_shortcut(actions_fn, glyph=59746, color=946986751):
     return {
         "WFWorkflowActions": actions_fn(),
         "WFWorkflowClientVersion": "4407",
@@ -427,12 +441,12 @@ def sign_shortcut(unsigned_path, signed_path):
         return False
 
 
-def generate_and_sign(name, actions_fn, color=463140863):
+def generate_and_sign(name, actions_fn, color=946986751, glyph=59746):
     base = os.path.dirname(os.path.abspath(__file__))
     unsigned = os.path.join(base, f"{name}.shortcut")
     signed = os.path.join(base, f"{name} (Signed).shortcut")
 
-    shortcut = make_shortcut(actions_fn, color=color)
+    shortcut = make_shortcut(actions_fn, glyph=glyph, color=color)
     with open(unsigned, "wb") as f:
         plistlib.dump(shortcut, f, fmt=plistlib.FMT_BINARY)
     print(f"Generated: {name}.shortcut ({os.path.getsize(unsigned)} bytes)")
@@ -441,7 +455,7 @@ def generate_and_sign(name, actions_fn, color=463140863):
 
 if __name__ == "__main__":
     generate_and_sign("Save Video", build_actions)
-    generate_and_sign("Save Video Debug", build_debug_actions, color=4282601983)
+    generate_and_sign("Save Video Debug", build_debug_actions, color=4282601983, glyph=59493)
 
     print()
     print("Install on iPhone (open in Safari):")
