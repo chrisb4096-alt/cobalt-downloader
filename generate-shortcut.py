@@ -92,31 +92,25 @@ def build_actions():
 
     # --- Input handling ---
 
-    # 1. IF Shortcut Input has any value
-    actions.append(act("conditional", {
-        "GroupingIdentifier": g_input,
-        "WFControlFlowMode": 0,
-        "WFCondition": 100,
-        "WFInput": shortcut_input(),
-    }))
-
-    # 2. Set videoURL = Shortcut Input (explicit reference)
+    # 1. Set videoURL from Shortcut Input (may be empty if run manually)
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
         "WFInput": shortcut_input(),
     }))
 
-    # 3. Otherwise
+    # 2. IF videoURL does NOT have any value → get from clipboard
     actions.append(act("conditional", {
         "GroupingIdentifier": g_input,
-        "WFControlFlowMode": 1,
+        "WFControlFlowMode": 0,
+        "WFCondition": 99,
+        "WFInput": var_ref("videoURL"),
     }))
 
-    # 4. Get Clipboard → 5. Set videoURL (implicit from clipboard)
+    # 3. Get Clipboard → overwrite videoURL
     actions.append(act("getclipboard"))
     actions.append(setvar("videoURL"))
 
-    # 6. End If
+    # 4. End If (no else needed)
     actions.append(act("conditional", {
         "GroupingIdentifier": g_input,
         "WFControlFlowMode": 2,
@@ -236,16 +230,13 @@ def build_debug_actions():
 
     actions = []
 
-    # 1-6: Same input handling
-    actions.append(act("conditional", {
-        "GroupingIdentifier": g_input, "WFControlFlowMode": 0,
-        "WFCondition": 100, "WFInput": shortcut_input(),
-    }))
+    # 1-4: Input handling (set from share sheet, fallback to clipboard)
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL", "WFInput": shortcut_input(),
     }))
     actions.append(act("conditional", {
-        "GroupingIdentifier": g_input, "WFControlFlowMode": 1,
+        "GroupingIdentifier": g_input, "WFControlFlowMode": 0,
+        "WFCondition": 99, "WFInput": var_ref("videoURL"),
     }))
     actions.append(act("getclipboard"))
     actions.append(setvar("videoURL"))
