@@ -281,76 +281,38 @@ def build_actions():
 
 
 def build_debug_actions():
-    """Debug: 3 incremental POST tests to find what breaks.
-    A) Bare POST (no body, no headers)
-    B) POST + TVDL-style WFJSONValues
-    C) POST + ShowHeaders + WFHTTPHeaders
-    All to httpbin.org/post which always returns 200."""
-    a_uuid = new_uuid()
-    b_uuid = new_uuid()
-    c_uuid = new_uuid()
+    """v9: Bare POST to httpbin, no Quick Look. Just alert + clipboard."""
+    post_uuid = new_uuid()
 
     actions = []
 
-    # --- Test A: Bare minimum POST ---
-    actions.append(act("downloadurl", {
-        "UUID": a_uuid,
-        "WFURL": "https://httpbin.org/post",
-        "WFHTTPMethod": "POST",
-    }))
-    actions.append(act("setvariable", {
-        "WFVariableName": "testA",
-        "WFInput": output_ref(a_uuid, "Contents of URL"),
-    }))
-    actions.append(getvar("testA"))
-    actions.append(act("setclipboard"))
+    # Version check - if you see this alert, you have the latest version
     actions.append(act("alert", {
-        "WFAlertActionTitle": "Test A: bare POST",
-        "WFAlertActionMessage": "Done. Check clipboard for httpbin echo.",
+        "WFAlertActionTitle": "Debug v9",
+        "WFAlertActionMessage": "If you see this, you have the latest version.",
     }))
 
-    # --- Test B: POST + JSON body (TVDL pattern) ---
+    # Bare minimum POST to httpbin (no body, no headers)
     actions.append(act("downloadurl", {
-        "UUID": b_uuid,
+        "UUID": post_uuid,
         "WFURL": "https://httpbin.org/post",
         "WFHTTPMethod": "POST",
-        "WFJSONValues": dict_value([
-            dict_item("test", text("hello")),
-        ]),
-    }))
-    actions.append(act("setvariable", {
-        "WFVariableName": "testB",
-        "WFInput": output_ref(b_uuid, "Contents of URL"),
-    }))
-    actions.append(getvar("testB"))
-    actions.append(act("setclipboard"))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test B: POST+JSON",
-        "WFAlertActionMessage": "Done. Check clipboard.",
     }))
 
-    # --- Test C: POST + headers ---
-    actions.append(act("downloadurl", {
-        "UUID": c_uuid,
-        "ShowHeaders": True,
-        "WFURL": "https://httpbin.org/post",
-        "WFHTTPMethod": "POST",
-        "WFHTTPHeaders": dict_value([
-            dict_item("Accept", text("application/json")),
-        ]),
-        "WFJSONValues": dict_value([
-            dict_item("test", text("hello")),
-        ]),
-    }))
+    # Capture response
     actions.append(act("setvariable", {
-        "WFVariableName": "testC",
-        "WFInput": output_ref(c_uuid, "Contents of URL"),
+        "WFVariableName": "result",
+        "WFInput": output_ref(post_uuid, "Contents of URL"),
     }))
-    actions.append(getvar("testC"))
+
+    # Copy to clipboard
+    actions.append(getvar("result"))
     actions.append(act("setclipboard"))
+
+    # Show result
     actions.append(act("alert", {
-        "WFAlertActionTitle": "Test C: POST+headers",
-        "WFAlertActionMessage": "Done. Check clipboard.",
+        "WFAlertActionTitle": "POST result",
+        "WFAlertActionMessage": "Response copied to clipboard. Paste it somewhere!",
     }))
 
     return actions
@@ -430,8 +392,11 @@ def generate_and_sign(name, actions_fn, color=463140863):
 if __name__ == "__main__":
     generate_and_sign("Save Video", build_actions)
     generate_and_sign("Save Video Debug", build_debug_actions, color=4282601983)
+    # Fresh filename to bust GitHub CDN cache
+    generate_and_sign("Debug v9", build_debug_actions, color=4282601983)
 
     print()
     print("Install on iPhone (open in Safari):")
     print("  Main:  https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Save%20Video%20(Signed).shortcut")
     print("  Debug: https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Save%20Video%20Debug%20(Signed).shortcut")
+    print("  v9:    https://github.com/chrisb4096-alt/cobalt-downloader/raw/master/Debug%20v9%20(Signed).shortcut")
