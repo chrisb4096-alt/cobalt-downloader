@@ -36,6 +36,35 @@ def var_text(var_name):
     }
 
 
+def output_text(action_uuid, output_name):
+    """Text field referencing a specific action's output by UUID."""
+    return {
+        "Value": {
+            "attachmentsByRange": {
+                "{0, 1}": {
+                    "Type": "ActionOutput",
+                    "OutputUUID": action_uuid,
+                    "OutputName": output_name,
+                }
+            },
+            "string": "\ufffc",
+        },
+        "WFSerializationType": "WFTextTokenString",
+    }
+
+
+def output_ref(action_uuid, output_name):
+    """Direct reference to a specific action's output by UUID."""
+    return {
+        "Value": {
+            "Type": "ActionOutput",
+            "OutputUUID": action_uuid,
+            "OutputName": output_name,
+        },
+        "WFSerializationType": "WFTextTokenAttachment",
+    }
+
+
 def var_ref(var_name):
     """Direct reference to a named variable."""
     return {
@@ -117,6 +146,11 @@ def build_actions():
     g_error = new_uuid()
     g_picker = new_uuid()
 
+    # UUIDs for actions whose output we reference later
+    api_post_uuid = new_uuid()
+    picker_geturl_uuid = new_uuid()
+    direct_geturl_uuid = new_uuid()
+
     actions = []
 
     # --- Input handling ---
@@ -142,9 +176,9 @@ def build_actions():
 
     # --- API call ---
 
-    # 6. POST to cobalt API
+    # 6. POST to cobalt API (UUID so we can reference its output)
     actions.append(act("downloadurl", {
-        "UUID": new_uuid(),
+        "UUID": api_post_uuid,
         "Advanced": True,
         "ShowHeaders": True,
         "WFURL": API_URL,
@@ -193,100 +227,119 @@ def build_actions():
     actions.append(getvar("status"))
     actions.append(if_begin(g_picker, "Contains", "picker"))
 
-    # 16-19. Get picker array → first item → get url → save
+    # 16-18. Get picker array → first item → get url (with UUID)
     actions.append(getkey("picker", from_var="apiResponse"))
     actions.append(act("getitemfromlist", {"WFItemSpecifier": "First Item"}))
-    actions.append(getkey("url"))
-    actions.append(setvar("downloadURL"))
+    actions.append(act("getvalueforkey", {
+        "UUID": picker_geturl_uuid,
+        "WFDictionaryKey": "url",
+    }))
 
-    # 20-22. Download → save to photos → notify
-    actions.append(act("downloadurl", {"WFURL": var_text("downloadURL")}))
+    # 19-21. Download using ActionOutput ref → save to photos → notify
+    actions.append(act("downloadurl", {
+        "WFURL": output_text(picker_geturl_uuid, "Dictionary Value"),
+    }))
     actions.append(act("savetocameraroll"))
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
     }))
 
-    # 23. Otherwise (tunnel/redirect)
+    # 22. Otherwise (tunnel/redirect)
     actions.append(if_else(g_picker))
 
-    # 24-28. Get url → save → download → save to photos → notify
-    actions.append(getkey("url", from_var="apiResponse"))
-    actions.append(setvar("downloadURL"))
-    actions.append(act("downloadurl", {"WFURL": var_text("downloadURL")}))
+    # 23. Get url from apiResponse (with UUID)
+    actions.append(act("getvalueforkey", {
+        "UUID": direct_geturl_uuid,
+        "WFDictionaryKey": "url",
+        "WFInput": var_ref("apiResponse"),
+    }))
+
+    # 24-26. Download using ActionOutput ref → save to photos → notify
+    actions.append(act("downloadurl", {
+        "WFURL": output_text(direct_geturl_uuid, "Dictionary Value"),
+    }))
     actions.append(act("savetocameraroll"))
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
     }))
 
-    # 29. End If (picker)
+    # 27. End If (picker)
     actions.append(if_end(g_picker))
 
-    # 30. End If (error)
+    # 28. End If (error)
     actions.append(if_end(g_error))
 
     return actions
 
 
 def build_debug_actions():
-    """Minimal diagnostic: Test A (simple GET) then Test B (POST with headers).
-    Shows alert after each step so we know exactly where it fails."""
+    """Debug version: shows full API response, copies to clipboard, then downloads.
+    Uses ActionOutput UUID references (not named variables) for download URLs."""
+    g_input = new_uuid()
+    api_post_uuid = new_uuid()
+    geturl_uuid = new_uuid()
+
     actions = []
 
-    # --- Test A: Simple GET to google.com ---
-    actions.append(act("downloadurl", {
-        "WFURL": "https://www.google.com",
+    # 1-6: Input handling
+    actions.append(act("setvariable", {
+        "WFVariableName": "videoURL", "WFInput": shortcut_input(),
     }))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test A passed",
-        "WFAlertActionMessage": "Simple GET worked",
-    }))
-
-    # --- Test B: Simple GET to cobalt API ---
-    actions.append(act("downloadurl", {
-        "WFURL": API_URL,
-    }))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test B passed",
-        "WFAlertActionMessage": "GET to cobalt API worked",
-    }))
-
-    # --- Test C: POST with JSON body, NO headers ---
+    actions.append(getvar("videoURL"))
+    actions.append(if_begin(g_input, "Does Not Have Any Value"))
     actions.append(act("getclipboard"))
     actions.append(setvar("videoURL"))
-    actions.append(act("downloadurl", {
-        "WFURL": API_URL,
-        "WFHTTPMethod": "POST",
-        "WFHTTPBodyType": "JSON",
-        "WFJSONValues": dict_value([
-            dict_item("url", var_text("videoURL")),
-        ]),
-    }))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test C passed",
-        "WFAlertActionMessage": "POST with JSON body worked (may get 401)",
-    }))
+    actions.append(if_end(g_input))
 
-    # --- Test D: POST with JSON body AND headers ---
+    # 7. API call (with UUID)
     actions.append(act("downloadurl", {
+        "UUID": api_post_uuid,
         "Advanced": True,
         "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
         "WFHTTPHeaders": dict_value([
+            dict_item("Accept", text("application/json")),
+            dict_item("Content-Type", text("application/json")),
             dict_item("Authorization", text(f"Api-Key {API_KEY}")),
         ]),
         "WFHTTPBodyType": "JSON",
         "WFJSONValues": dict_value([
             dict_item("url", var_text("videoURL")),
+            dict_item("videoQuality", text("max")),
+            dict_item("filenameStyle", text("pretty")),
+            dict_item("youtubeVideoCodec", text("h264")),
         ]),
     }))
+
+    # 8. Save response
+    actions.append(setvar("apiResponse"))
+
+    # 9-10. Quick Look
+    actions.append(getvar("apiResponse"))
     actions.append(act("previewdocument"))
+
+    # 11-12. Copy to clipboard
+    actions.append(getvar("apiResponse"))
     actions.append(act("setclipboard"))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Test D passed",
-        "WFAlertActionMessage": "POST with headers worked! Response copied.",
+
+    # 13. Get url from response (with UUID for ActionOutput ref)
+    actions.append(act("getvalueforkey", {
+        "UUID": geturl_uuid,
+        "WFDictionaryKey": "url",
+        "WFInput": var_ref("apiResponse"),
+    }))
+
+    # 14-16. Download using ActionOutput ref → save → notify
+    actions.append(act("downloadurl", {
+        "WFURL": output_text(geturl_uuid, "Dictionary Value"),
+    }))
+    actions.append(act("savetocameraroll"))
+    actions.append(act("notification", {
+        "WFNotificationActionTitle": "Save Video (Debug)",
+        "WFNotificationActionBody": "Video saved! Response copied to clipboard.",
     }))
 
     return actions
