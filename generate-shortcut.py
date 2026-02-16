@@ -275,34 +275,41 @@ def build_actions():
 
 
 def build_debug_actions():
-    """Debug version: shows full API response, copies to clipboard, then downloads.
-    Uses ActionOutput UUID references (not named variables) for download URLs."""
-    g_input = new_uuid()
-    api_post_uuid = new_uuid()
-    geturl_uuid = new_uuid()
-
+    """Step-by-step diagnostic with alerts after each action.
+    Test 1: POST without headers (TVDL-style, will get 401 but proves action works)
+    Test 2: POST with headers (full cobalt request)
+    """
     actions = []
 
-    # 1-6: Input handling
-    actions.append(act("setvariable", {
-        "WFVariableName": "videoURL", "WFInput": shortcut_input(),
-    }))
-    actions.append(getvar("videoURL"))
-    actions.append(if_begin(g_input, "Does Not Have Any Value"))
+    # --- Step 1: Get clipboard URL ---
     actions.append(act("getclipboard"))
     actions.append(setvar("videoURL"))
-    actions.append(if_end(g_input))
 
-    # 7. API call (with UUID)
+    # --- Test 1: POST without headers (matches TVDL format exactly) ---
+    # No Advanced, no ShowHeaders, no WFHTTPBodyType, no WFHTTPHeaders
     actions.append(act("downloadurl", {
-        "UUID": api_post_uuid,
-        "Advanced": True,
+        "UUID": new_uuid(),
+        "WFURL": API_URL,
+        "WFHTTPMethod": "POST",
+        "WFJSONValues": dict_value([
+            dict_item("url", var_text("videoURL")),
+        ]),
+    }))
+    actions.append(setvar("test1Result"))
+    actions.append(getvar("test1Result"))
+    actions.append(act("setclipboard"))
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test 1: No headers",
+        "WFAlertActionMessage": "POST without headers done. Response copied to clipboard. Check it!",
+    }))
+
+    # --- Test 2: POST with Authorization header ---
+    actions.append(act("downloadurl", {
+        "UUID": new_uuid(),
         "ShowHeaders": True,
         "WFURL": API_URL,
         "WFHTTPMethod": "POST",
         "WFHTTPHeaders": dict_value([
-            dict_item("Accept", text("application/json")),
-            dict_item("Content-Type", text("application/json")),
             dict_item("Authorization", text(f"Api-Key {API_KEY}")),
         ]),
         "WFHTTPBodyType": "JSON",
@@ -313,33 +320,14 @@ def build_debug_actions():
             dict_item("youtubeVideoCodec", text("h264")),
         ]),
     }))
-
-    # 8. Save response
-    actions.append(setvar("apiResponse"))
-
-    # 9-10. Quick Look
-    actions.append(getvar("apiResponse"))
+    actions.append(setvar("test2Result"))
+    actions.append(getvar("test2Result"))
     actions.append(act("previewdocument"))
-
-    # 11-12. Copy to clipboard
-    actions.append(getvar("apiResponse"))
+    actions.append(getvar("test2Result"))
     actions.append(act("setclipboard"))
-
-    # 13. Get url from response (with UUID for ActionOutput ref)
-    actions.append(act("getvalueforkey", {
-        "UUID": geturl_uuid,
-        "WFDictionaryKey": "url",
-        "WFInput": var_ref("apiResponse"),
-    }))
-
-    # 14-16. Download using ActionOutput ref → save → notify
-    actions.append(act("downloadurl", {
-        "WFURL": output_text(geturl_uuid, "Dictionary Value"),
-    }))
-    actions.append(act("savetocameraroll"))
-    actions.append(act("notification", {
-        "WFNotificationActionTitle": "Save Video (Debug)",
-        "WFNotificationActionBody": "Video saved! Response copied to clipboard.",
+    actions.append(act("alert", {
+        "WFAlertActionTitle": "Test 2: With headers",
+        "WFAlertActionMessage": "Full POST done. Response shown and copied.",
     }))
 
     return actions
