@@ -177,7 +177,6 @@ def build_actions():
     YouTube uses tunnel (proxied via Webshare residential proxy).
     Twitter uses redirect (direct CDN). Instagram needs session cookies.
     """
-    g_input = new_uuid()
     g_error = new_uuid()
     g_picker = new_uuid()
     g_handled = new_uuid()
@@ -188,46 +187,24 @@ def build_actions():
 
     actions = []
 
-    # --- Input: Share Sheet → extract URLs; fall back to clipboard ---
-    # Step 1: Get Shortcut Input (Share Sheet content)
-    input_uuid = new_uuid()
-    actions.append(act("setvariable", {
-        "UUID": input_uuid,
-        "WFVariableName": "rawInput",
-        "WFInput": shortcut_input(),
-    }))
+    # --- Input: Share Sheet content or clipboard (via WFWorkflowNoInputBehavior) ---
+    # Put Shortcut Input on the pipeline
+    actions.append(act("getvariable", {"WFVariable": shortcut_input()}))
 
-    # Step 2: Check if we have Share Sheet input
-    actions.append(act("getvariable", {"WFVariable": var_ref("rawInput")}))
-    actions.append(if_begin(g_input, 100))  # 100 = Has Any Value
-
-    # Share Sheet path: extract URLs from the shared content
+    # Extract URLs from whatever the input is (text, rich text, URL, etc.)
     detect_uuid = new_uuid()
-    actions.append(act("detect.link", {
-        "UUID": detect_uuid,
-        "WFInput": var_ref("rawInput"),
+    actions.append(act("detect.link", {"UUID": detect_uuid}))
+
+    # Get first URL from results
+    first_uuid = new_uuid()
+    actions.append(act("getitemfromlist", {
+        "UUID": first_uuid,
+        "WFItemSpecifier": "First Item",
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": output_ref(detect_uuid, "URLs"),
+        "WFInput": output_ref(first_uuid, "Item from List"),
     }))
-
-    actions.append(if_else(g_input))
-
-    # No Share Sheet: fall back to clipboard, extract URLs from that too
-    clipboard_uuid = new_uuid()
-    actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
-    clip_detect_uuid = new_uuid()
-    actions.append(act("detect.link", {
-        "UUID": clip_detect_uuid,
-        "WFInput": output_ref(clipboard_uuid, "Clipboard"),
-    }))
-    actions.append(act("setvariable", {
-        "WFVariableName": "videoURL",
-        "WFInput": output_ref(clip_detect_uuid, "URLs"),
-    }))
-
-    actions.append(if_end(g_input))
 
     # --- Notification ---
     actions.append(act("notification", {
