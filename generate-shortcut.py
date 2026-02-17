@@ -174,8 +174,8 @@ def if_end(group_id):
 def build_actions():
     """Full shortcut with error handling, picker (Instagram carousels),
     and tunnel/redirect download. Uses flat (non-nested) conditionals.
-    Note: YouTube tunnel downloads are broken server-side (YouTube blocks
-    cloud IPs). Works for Twitter, Instagram, TikTok, Facebook, etc.
+    YouTube uses tunnel (proxied via Webshare residential proxy).
+    Twitter uses redirect (direct CDN). Instagram needs session cookies.
     """
     g_input = new_uuid()
     g_error = new_uuid()
