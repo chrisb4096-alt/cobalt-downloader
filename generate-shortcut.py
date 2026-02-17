@@ -8,7 +8,7 @@ import plistlib
 import uuid
 import os
 
-API_URL = "https://cobalt-production-97bf.up.railway.app/"
+API_URL = "https://cobalt-proxy-production.up.railway.app/"
 API_KEY = "JacAZJQQjLUsUjjqZCedjJQOJFfqhwYG"
 HUBSIGN_URL = "https://hubsign.routinehub.services/sign"
 
