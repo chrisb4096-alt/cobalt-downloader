@@ -85,6 +85,22 @@ def shortcut_input():
     }
 
 
+def shortcut_input_as_url():
+    """Share Sheet input coerced to URL type."""
+    return {
+        "Value": {
+            "Type": "ExtensionInput",
+            "Aggrandizements": [
+                {
+                    "Type": "WFCoercionVariableAggrandizement",
+                    "CoercionItemClass": "WFURLContentItem",
+                }
+            ],
+        },
+        "WFSerializationType": "WFTextTokenAttachment",
+    }
+
+
 def var_ref(var_name):
     return {
         "Value": {"Type": "Variable", "VariableName": var_name},
@@ -155,33 +171,27 @@ def build_actions():
 
     # --- Input: Share Sheet first, clipboard fallback ---
 
-    # 1. Set videoURL from Share Sheet input (empty if run manually)
+    # 1. Set videoURL from Share Sheet input, coerced to URL type
     input_uuid = new_uuid()
     actions.append(act("setvariable", {
         "UUID": input_uuid,
         "WFVariableName": "videoURL",
-        "WFInput": shortcut_input(),
+        "WFInput": shortcut_input_as_url(),
     }))
 
-    # 2. Check if videoURL has a value
+    # 2. Check if videoURL has a value (empty if run manually / non-URL shared)
     actions.append(act("getvariable", {"WFVariable": var_ref("videoURL")}))
 
-    # 3. If no Share Sheet input, fall back to clipboard
+    # 3. If no valid URL from Share Sheet, fall back to clipboard
     actions.append(if_begin(g_input, "Does Not Have Any Value"))
     actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": output_ref(clipboard_uuid, "Clipboard"),
+        "WFInput": output_ref_as_url(clipboard_uuid, "Clipboard"),
     }))
     actions.append(if_end(g_input))
 
-    # 4. Extract clean URL (some apps share "Check out: https://..." text)
-    actions.append(act("getvariable", {"WFVariable": var_ref("videoURL")}))
-    actions.append(act("detect.link"))
-    actions.append(act("getitemfromlist", {"WFItemSpecifier": "First Item"}))
-    actions.append(act("setvariable", {"WFVariableName": "videoURL"}))
-
-    # 5. "Downloading..." banner so user knows it's working
+    # 4. "Downloading..." banner so user knows it's working
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Downloading...",
