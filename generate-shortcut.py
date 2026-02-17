@@ -108,6 +108,23 @@ def var_ref(var_name):
     }
 
 
+def var_ref_as_url(var_name):
+    """Variable reference coerced to URL type (strips surrounding text)."""
+    return {
+        "Value": {
+            "Type": "Variable",
+            "VariableName": var_name,
+            "Aggrandizements": [
+                {
+                    "Type": "WFCoercionVariableAggrandizement",
+                    "CoercionItemClass": "WFURLContentItem",
+                }
+            ],
+        },
+        "WFSerializationType": "WFTextTokenAttachment",
+    }
+
+
 def dict_item(key, value, item_type=0):
     return {"WFItemType": item_type, "WFKey": text(key), "WFValue": value}
 
@@ -189,7 +206,7 @@ def build_actions():
     actions.append(if_begin(g_input, "Has Any Value"))
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": var_ref("shareInput"),
+        "WFInput": var_ref_as_url("shareInput"),
     }))
     actions.append(if_end(g_input))
 
