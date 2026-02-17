@@ -187,23 +187,12 @@ def build_actions():
 
     actions = []
 
-    # --- Input: Share Sheet content or clipboard (via WFWorkflowNoInputBehavior) ---
-    # Put Shortcut Input on the pipeline
-    actions.append(act("getvariable", {"WFVariable": shortcut_input()}))
-
-    # Extract URLs from whatever the input is (text, rich text, URL, etc.)
-    detect_uuid = new_uuid()
-    actions.append(act("detect.link", {"UUID": detect_uuid}))
-
-    # Get first URL from results
-    first_uuid = new_uuid()
-    actions.append(act("getitemfromlist", {
-        "UUID": first_uuid,
-        "WFItemSpecifier": "First Item",
-    }))
+    # --- Input: Share Sheet URL or clipboard (via WFWorkflowNoInputBehavior) ---
+    # Set videoURL directly from ExtensionInput (Share Sheet passes URL type)
+    # When no Share Sheet input, GetClipboard fallback provides clipboard content
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": output_ref(first_uuid, "Item from List"),
+        "WFInput": shortcut_input(),
     }))
 
     # --- Notification ---
@@ -406,13 +395,12 @@ def make_shortcut(actions_fn, glyph=59746, color=946986751):
             "WFWorkflowIconStartColor": color,
         },
         "WFWorkflowImportQuestions": [],
-        "WFWorkflowNoInputBehavior": "GetClipboard",
+        "WFWorkflowNoInputBehavior": {
+            "Name": "WFWorkflowNoInputBehaviorGetClipboard",
+            "Parameters": {},
+        },
         "WFWorkflowInputContentItemClasses": [
             "WFURLContentItem",
-            "WFStringContentItem",
-            "WFRichTextContentItem",
-            "WFSafariWebPageContentItem",
-            "WFAppContentItem",
         ],
         "WFWorkflowMinimumClientVersion": 900,
         "WFWorkflowMinimumClientVersionString": "900",
