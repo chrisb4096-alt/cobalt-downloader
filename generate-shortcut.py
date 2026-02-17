@@ -289,7 +289,7 @@ def build_actions():
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref_as_url(item_url_uuid, "Dictionary Value"),
+        "WFInput": output_ref(item_url_uuid, "Dictionary Value"),
     }))
     item_dl_uuid = new_uuid()
     actions.append(act("downloadurl", {
@@ -315,7 +315,7 @@ def build_actions():
     # 15. Otherwise (tunnel/redirect - single video)
     actions.append(if_else(g_picker))
 
-    # 16. Get url from apiResponse with URL coercion
+    # 16. Get url from apiResponse
     actions.append(act("getvalueforkey", {
         "UUID": geturl_uuid,
         "WFDictionaryKey": "url",
@@ -323,7 +323,7 @@ def build_actions():
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref_as_url(geturl_uuid, "Dictionary Value"),
+        "WFInput": output_ref(geturl_uuid, "Dictionary Value"),
     }))
 
     # 17. Download, save, notify
