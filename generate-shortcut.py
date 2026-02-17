@@ -262,12 +262,12 @@ def build_actions():
     actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
     actions.append(if_begin(g_picker, "Contains", "picker"))
 
-    # 11. Get picker array
+    # 11. Get picker array (direct ActionOutput ref)
     picker_key_uuid = new_uuid()
     actions.append(act("getvalueforkey", {
         "UUID": picker_key_uuid,
         "WFDictionaryKey": "picker",
-        "WFInput": var_ref("apiResponse"),
+        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
 
     # 12. Repeat with Each item in picker array
@@ -289,7 +289,7 @@ def build_actions():
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref(item_url_uuid, "Dictionary Value"),
+        "WFInput": output_ref_as_url(item_url_uuid, "Dictionary Value"),
     }))
     item_dl_uuid = new_uuid()
     actions.append(act("downloadurl", {
@@ -315,15 +315,15 @@ def build_actions():
     # 15. Otherwise (tunnel/redirect - single video)
     actions.append(if_else(g_picker))
 
-    # 16. Get url from apiResponse
+    # 16. Get url from API response (direct ActionOutput ref, like working shortcut)
     actions.append(act("getvalueforkey", {
         "UUID": geturl_uuid,
         "WFDictionaryKey": "url",
-        "WFInput": var_ref("apiResponse"),
+        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref(geturl_uuid, "Dictionary Value"),
+        "WFInput": output_ref_as_url(geturl_uuid, "Dictionary Value"),
     }))
 
     # 17. Download, save, notify
