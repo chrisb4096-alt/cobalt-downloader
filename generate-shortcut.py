@@ -188,11 +188,11 @@ def build_actions():
     actions = []
 
     # --- Input: Share Sheet URL or clipboard (via WFWorkflowNoInputBehavior) ---
-    # Coerce to URL type: no-op for Twitter/Instagram/YouTube (already URLs),
-    # extracts URL from text for Facebook (shares text with embedded URL)
+    # Set videoURL directly from ExtensionInput (Share Sheet passes URL type)
+    # When no Share Sheet input, GetClipboard fallback provides clipboard content
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": shortcut_input_as_url(),
+        "WFInput": shortcut_input(),
     }))
 
     # --- Notification ---
@@ -280,7 +280,7 @@ def build_actions():
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref_as_url(item_url_uuid, "Dictionary Value"),
+        "WFInput": output_ref(item_url_uuid, "Dictionary Value"),
     }))
     item_dl_uuid = new_uuid()
     actions.append(act("downloadurl", {
@@ -314,7 +314,7 @@ def build_actions():
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref_as_url(geturl_uuid, "Dictionary Value"),
+        "WFInput": output_ref(geturl_uuid, "Dictionary Value"),
     }))
     actions.append(act("downloadurl", {
         "UUID": download_uuid,
