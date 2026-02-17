@@ -280,7 +280,7 @@ def build_actions():
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_text(item_url_uuid, "Dictionary Value"),
+        "WFInput": output_ref_as_url(item_url_uuid, "Dictionary Value"),
     }))
     item_dl_uuid = new_uuid()
     actions.append(act("downloadurl", {
@@ -312,9 +312,33 @@ def build_actions():
         "WFDictionaryKey": "url",
         "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
+
+    # Facebook URLs break with URL coercion, everything else needs it
+    g_facebook = new_uuid()
+    actions.append(act("getvariable", {"WFVariable": var_ref("videoURL")}))
+    actions.append(if_begin(g_facebook, "Contains", "facebook"))
+
+    # --- Facebook path: no URL coercion ---
+    fb_dl_uuid = new_uuid()
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_text(geturl_uuid, "Dictionary Value"),
+        "WFInput": output_ref(geturl_uuid, "Dictionary Value"),
+    }))
+    actions.append(act("downloadurl", {
+        "UUID": fb_dl_uuid,
+        "WFURL": var_text("downloadURL"),
+        "ShowHeaders": True,
+    }))
+    actions.append(act("savetocameraroll", {
+        "WFInput": output_ref(fb_dl_uuid, "Contents of URL"),
+    }))
+
+    actions.append(if_else(g_facebook))
+
+    # --- Default path: URL coercion (Twitter, YouTube, Instagram) ---
+    actions.append(act("setvariable", {
+        "WFVariableName": "downloadURL",
+        "WFInput": output_ref_as_url(geturl_uuid, "Dictionary Value"),
     }))
     actions.append(act("downloadurl", {
         "UUID": download_uuid,
@@ -324,6 +348,9 @@ def build_actions():
     actions.append(act("savetocameraroll", {
         "WFInput": output_ref(download_uuid, "Contents of URL"),
     }))
+
+    actions.append(if_end(g_facebook))
+
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
