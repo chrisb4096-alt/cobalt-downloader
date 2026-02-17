@@ -188,11 +188,11 @@ def build_actions():
     actions = []
 
     # --- Input: Share Sheet URL or clipboard (via WFWorkflowNoInputBehavior) ---
-    # Set videoURL directly from ExtensionInput (Share Sheet passes URL type)
-    # When no Share Sheet input, GetClipboard fallback provides clipboard content
+    # Coerce to URL type: no-op for Twitter/Instagram/YouTube (already URLs),
+    # extracts URL from text for Facebook (shares text with embedded URL)
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": shortcut_input(),
+        "WFInput": shortcut_input_as_url(),
     }))
 
     # --- Notification ---
