@@ -193,16 +193,7 @@ def build_actions():
     }))
     actions.append(if_end(g_input))
 
-    # 4. Extract URL from text (YouTube shares "Title https://youtu.be/...")
-    actions.append(act("getvariable", {"WFVariable": var_ref("videoURL")}))
-    actions.append(act("text.match", {
-        "WFMatchTextPattern": "https?://\\S+",
-        "WFMatchTextCaseSensitive": False,
-    }))
-    actions.append(act("getitemfromlist", {"WFItemSpecifier": "First Item"}))
-    actions.append(act("setvariable", {"WFVariableName": "videoURL"}))
-
-    # 5. "Downloading..." banner so user knows it's working
+    # 4. "Downloading..." banner so user knows it's working
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Downloading...",
