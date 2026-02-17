@@ -171,23 +171,23 @@ def build_actions():
 
     # --- Input: Share Sheet first, clipboard fallback ---
 
-    # 1. Set videoURL from Share Sheet input, coerced to URL type
+    # 1. Set videoURL from Share Sheet input (plain, no coercion)
     input_uuid = new_uuid()
     actions.append(act("setvariable", {
         "UUID": input_uuid,
         "WFVariableName": "videoURL",
-        "WFInput": shortcut_input_as_url(),
+        "WFInput": shortcut_input(),
     }))
 
-    # 2. Check if videoURL has a value (empty if run manually / non-URL shared)
+    # 2. Check if videoURL has a value
     actions.append(act("getvariable", {"WFVariable": var_ref("videoURL")}))
 
-    # 3. If no valid URL from Share Sheet, fall back to clipboard
+    # 3. If no Share Sheet input, fall back to clipboard
     actions.append(if_begin(g_input, "Does Not Have Any Value"))
     actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": output_ref_as_url(clipboard_uuid, "Clipboard"),
+        "WFInput": output_ref(clipboard_uuid, "Clipboard"),
     }))
     actions.append(if_end(g_input))
 
