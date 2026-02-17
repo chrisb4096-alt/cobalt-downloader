@@ -387,7 +387,7 @@ def make_shortcut(actions_fn, glyph=59746, color=946986751):
         "WFWorkflowActions": actions_fn(),
         "WFWorkflowClientVersion": "4407",
         "WFWorkflowHasOutputFallback": False,
-        "WFWorkflowHasShortcutInputVariables": False,
+        "WFWorkflowHasShortcutInputVariables": True,
         "WFWorkflowIcon": {
             "WFWorkflowIconGlyphNumber": glyph,
             "WFWorkflowIconStartColor": color,
