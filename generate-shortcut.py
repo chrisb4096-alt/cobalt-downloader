@@ -155,30 +155,30 @@ def if_end(group_id):
 
 
 def build_actions():
-    """Full shortcut matching iOS-native format."""
+    """Full shortcut with FLAT structure (no nested conditionals).
+    The working manually-built shortcut is completely linear with zero If blocks.
+    Nested If blocks break ActionOutput references on iOS. This version uses
+    separate non-nested If blocks with a 'handled' flag to avoid nesting.
+    """
     g_input = new_uuid()
     g_error = new_uuid()
     g_picker = new_uuid()
+    g_handled = new_uuid()
 
-    # UUIDs for actions whose output we reference
     clipboard_uuid = new_uuid()
     api_post_uuid = new_uuid()
     geturl_uuid = new_uuid()
     download_uuid = new_uuid()
-    save_uuid = new_uuid()
 
     actions = []
 
     # --- Input: clipboard default, Share Sheet overrides ---
-
-    # 1. Always get clipboard as default
     actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
         "WFInput": output_ref(clipboard_uuid, "Clipboard"),
     }))
 
-    # 2. Check if Share Sheet has input, override if so
     input_uuid = new_uuid()
     actions.append(act("setvariable", {
         "UUID": input_uuid,
@@ -193,15 +193,13 @@ def build_actions():
     }))
     actions.append(if_end(g_input))
 
-    # 4. "Downloading..." banner so user knows it's working
+    # --- Notification ---
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Downloading...",
     }))
 
-    # --- API POST (JSON body + headers, matching working shortcut exactly) ---
-
-    # 4. POST to cobalt API
+    # --- POST to cobalt API ---
     actions.append(act("downloadurl", {
         "UUID": api_post_uuid,
         "ShowHeaders": True,
@@ -221,13 +219,7 @@ def build_actions():
         ]),
     }))
 
-    # 5. Save API response
-    actions.append(act("setvariable", {
-        "WFVariableName": "apiResponse",
-        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
-    }))
-
-    # 6. Get "status" key
+    # --- Get status ---
     status_uuid = new_uuid()
     actions.append(act("getvalueforkey", {
         "UUID": status_uuid,
@@ -239,30 +231,29 @@ def build_actions():
         "WFInput": output_ref(status_uuid, "Dictionary Value"),
     }))
 
-    # --- Error check ---
-
-    # 7. IF status contains "error"
+    # --- FLAT IF #1: Error check (not nested) ---
     actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
     actions.append(if_begin(g_error, "Contains", "error"))
-
-    # 8. Show friendly error
+    actions.append(act("setvariable", {
+        "WFVariableName": "handled",
+        "WFInput": text("yes"),
+    }))
     actions.append(act("alert", {
         "WFAlertActionTitle": "Couldn't Save Video",
         "WFAlertActionMessage": "This video couldn't be downloaded. "
             "Make sure the link is valid and the content is publicly available.",
         "WFAlertActionCancelButtonShown": False,
     }))
+    actions.append(if_end(g_error))
 
-    # 9. Otherwise (success)
-    actions.append(if_else(g_error))
-
-    # --- Picker check (Instagram carousels) ---
-
-    # 10. IF status contains "picker"
+    # --- FLAT IF #2: Picker check (not nested) ---
     actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
     actions.append(if_begin(g_picker, "Contains", "picker"))
+    actions.append(act("setvariable", {
+        "WFVariableName": "handled",
+        "WFInput": text("yes"),
+    }))
 
-    # 11. Get picker array (direct ActionOutput ref)
     picker_key_uuid = new_uuid()
     actions.append(act("getvalueforkey", {
         "UUID": picker_key_uuid,
@@ -270,7 +261,6 @@ def build_actions():
         "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
 
-    # 12. Repeat with Each item in picker array
     loop_id = new_uuid()
     repeat_uuid = new_uuid()
     actions.append(act("repeat.each", {
@@ -280,7 +270,6 @@ def build_actions():
         "WFInput": output_ref(picker_key_uuid, "Dictionary Value"),
     }))
 
-    # 13. Inside loop: get url from current item, coerce, download, save
     item_url_uuid = new_uuid()
     actions.append(act("getvalueforkey", {
         "UUID": item_url_uuid,
@@ -301,21 +290,23 @@ def build_actions():
         "WFInput": output_ref(item_dl_uuid, "Contents of URL"),
     }))
 
-    # 14. End Repeat
     actions.append(act("repeat.each", {
         "GroupingIdentifier": loop_id,
         "WFControlFlowMode": 2,
     }))
-
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "All items saved!",
     }))
+    actions.append(if_end(g_picker))
 
-    # 15. Otherwise (tunnel/redirect - single video)
-    actions.append(if_else(g_picker))
+    # --- FLAT IF #3: Tunnel/redirect (only if not already handled) ---
+    actions.append(act("getvariable", {"WFVariable": var_ref("handled")}))
+    actions.append(if_begin(g_handled, "Has Any Value"))
+    # Already handled by error or picker - do nothing
+    actions.append(if_else(g_handled))
 
-    # 16. Get url from API response (direct ActionOutput ref, like working shortcut)
+    # Tunnel/redirect path - ONE level of nesting only
     actions.append(act("getvalueforkey", {
         "UUID": geturl_uuid,
         "WFDictionaryKey": "url",
@@ -325,27 +316,19 @@ def build_actions():
         "WFVariableName": "downloadURL",
         "WFInput": output_ref_as_url(geturl_uuid, "Dictionary Value"),
     }))
-
-    # 17. Download, save, notify
     actions.append(act("downloadurl", {
         "UUID": download_uuid,
         "WFURL": var_text("downloadURL"),
         "ShowHeaders": True,
     }))
     actions.append(act("savetocameraroll", {
-        "UUID": save_uuid,
         "WFInput": output_ref(download_uuid, "Contents of URL"),
     }))
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
     }))
-
-    # 18. End If (picker)
-    actions.append(if_end(g_picker))
-
-    # 19. End If (error)
-    actions.append(if_end(g_error))
+    actions.append(if_end(g_handled))
 
     return actions
 
