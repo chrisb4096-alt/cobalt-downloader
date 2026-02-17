@@ -169,25 +169,27 @@ def build_actions():
 
     actions = []
 
-    # --- Input: Share Sheet first, clipboard fallback ---
+    # --- Input: clipboard default, Share Sheet overrides ---
 
-    # 1. Set videoURL from Share Sheet input (plain, no coercion)
-    input_uuid = new_uuid()
-    actions.append(act("setvariable", {
-        "UUID": input_uuid,
-        "WFVariableName": "videoURL",
-        "WFInput": shortcut_input(),
-    }))
-
-    # 2. Check if videoURL has a value
-    actions.append(act("getvariable", {"WFVariable": var_ref("videoURL")}))
-
-    # 3. If no Share Sheet input, fall back to clipboard
-    actions.append(if_begin(g_input, "Does Not Have Any Value"))
+    # 1. Always get clipboard as default
     actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
         "WFInput": output_ref(clipboard_uuid, "Clipboard"),
+    }))
+
+    # 2. Check if Share Sheet has input, override if so
+    input_uuid = new_uuid()
+    actions.append(act("setvariable", {
+        "UUID": input_uuid,
+        "WFVariableName": "shareInput",
+        "WFInput": shortcut_input(),
+    }))
+    actions.append(act("getvariable", {"WFVariable": var_ref("shareInput")}))
+    actions.append(if_begin(g_input, "Has Any Value"))
+    actions.append(act("setvariable", {
+        "WFVariableName": "videoURL",
+        "WFInput": var_ref("shareInput"),
     }))
     actions.append(if_end(g_input))
 
