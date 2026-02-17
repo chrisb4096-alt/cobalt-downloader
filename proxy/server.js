@@ -16,6 +16,33 @@ if (!COBALT_URL || !BUFFER_SECRET) {
   process.exit(1);
 }
 
+// --- Rate limiting (per-IP, in-memory) ---
+const RATE_LIMIT = 20; // max requests per window
+const RATE_WINDOW = 60_000; // 1 minute
+const hits = new Map();
+
+function getClientIp(req) {
+  return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress;
+}
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  const timestamps = hits.get(ip)?.filter((t) => now - t < RATE_WINDOW) || [];
+  timestamps.push(now);
+  hits.set(ip, timestamps);
+  return timestamps.length > RATE_LIMIT;
+}
+
+// Clean up stale entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of hits) {
+    const active = timestamps.filter((t) => now - t < RATE_WINDOW);
+    if (active.length === 0) hits.delete(ip);
+    else hits.set(ip, active);
+  }
+}, 300_000);
+
 function signBufferUrl(tunnelUrl) {
   const exp = Math.floor(Date.now() / 1000) + 600;
   const payload = `${tunnelUrl}:${exp}`;
@@ -263,6 +290,15 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("ok");
+    return;
+  }
+
+  // Rate limit (skip health check)
+  const ip = getClientIp(req);
+  if (isRateLimited(ip)) {
+    console.log(`[rate] Limited: ${ip}`);
+    res.writeHead(429, { "Content-Type": "text/plain", "Retry-After": "60" });
+    res.end("Too many requests");
     return;
   }
 
