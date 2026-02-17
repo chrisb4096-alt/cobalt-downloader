@@ -182,32 +182,51 @@ def build_actions():
     g_picker = new_uuid()
     g_handled = new_uuid()
 
-    clipboard_uuid = new_uuid()
     api_post_uuid = new_uuid()
     geturl_uuid = new_uuid()
     download_uuid = new_uuid()
 
     actions = []
 
-    # --- Input: clipboard default, Share Sheet overrides ---
-    actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
-    actions.append(act("setvariable", {
-        "WFVariableName": "videoURL",
-        "WFInput": output_ref(clipboard_uuid, "Clipboard"),
-    }))
-
+    # --- Input: Share Sheet → extract URLs; fall back to clipboard ---
+    # Step 1: Get Shortcut Input (Share Sheet content)
     input_uuid = new_uuid()
     actions.append(act("setvariable", {
         "UUID": input_uuid,
-        "WFVariableName": "shareInput",
+        "WFVariableName": "rawInput",
         "WFInput": shortcut_input(),
     }))
-    actions.append(act("getvariable", {"WFVariable": var_ref("shareInput")}))
-    actions.append(if_begin(g_input, "Has Any Value"))
+
+    # Step 2: Check if we have Share Sheet input
+    actions.append(act("getvariable", {"WFVariable": var_ref("rawInput")}))
+    actions.append(if_begin(g_input, 100))  # 100 = Has Any Value
+
+    # Share Sheet path: extract URLs from the shared content
+    detect_uuid = new_uuid()
+    actions.append(act("detect.link", {
+        "UUID": detect_uuid,
+        "WFInput": var_ref("rawInput"),
+    }))
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
-        "WFInput": var_ref_as_url("shareInput"),
+        "WFInput": output_ref(detect_uuid, "URLs"),
     }))
+
+    actions.append(if_else(g_input))
+
+    # No Share Sheet: fall back to clipboard, extract URLs from that too
+    clipboard_uuid = new_uuid()
+    actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
+    clip_detect_uuid = new_uuid()
+    actions.append(act("detect.link", {
+        "UUID": clip_detect_uuid,
+        "WFInput": output_ref(clipboard_uuid, "Clipboard"),
+    }))
+    actions.append(act("setvariable", {
+        "WFVariableName": "videoURL",
+        "WFInput": output_ref(clip_detect_uuid, "URLs"),
+    }))
+
     actions.append(if_end(g_input))
 
     # --- Notification ---
@@ -410,26 +429,13 @@ def make_shortcut(actions_fn, glyph=59746, color=946986751):
             "WFWorkflowIconStartColor": color,
         },
         "WFWorkflowImportQuestions": [],
+        "WFWorkflowNoInputBehavior": "GetClipboard",
         "WFWorkflowInputContentItemClasses": [
-            "WFAppContentItem",
-            "WFAppStoreAppContentItem",
-            "WFArticleContentItem",
-            "WFContactContentItem",
-            "WFDateContentItem",
-            "WFEmailAddressContentItem",
-            "WFFolderContentItem",
-            "WFGenericFileContentItem",
-            "WFImageContentItem",
-            "WFiTunesProductContentItem",
-            "WFLocationContentItem",
-            "WFDCMapsLinkContentItem",
-            "WFAVAssetContentItem",
-            "WFPDFContentItem",
-            "WFPhoneNumberContentItem",
+            "WFURLContentItem",
+            "WFStringContentItem",
             "WFRichTextContentItem",
             "WFSafariWebPageContentItem",
-            "WFStringContentItem",
-            "WFURLContentItem",
+            "WFAppContentItem",
         ],
         "WFWorkflowMinimumClientVersion": 900,
         "WFWorkflowMinimumClientVersionString": "900",
