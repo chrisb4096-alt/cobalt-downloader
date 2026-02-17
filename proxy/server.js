@@ -182,11 +182,46 @@ async function extractFacebookVideo(originalUrl) {
       fetchOpts(headers)
     );
     const html = await resp.text();
-    console.log(`[fb] www watch status=${resp.status} len=${html.length}`);
+    // Debug: check what video-related patterns exist
+    const patterns = {
+      fbcdn_mp4: (html.match(/fbcdn\.net[^"'\s]*\.mp4/g) || []).length,
+      browser_native: (html.match(/browser_native/g) || []).length,
+      playable_url: (html.match(/playable_url/g) || []).length,
+      video_url: (html.match(/"video_url"/g) || []).length,
+      hd_src: (html.match(/hd_src/g) || []).length,
+      sd_src: (html.match(/sd_src/g) || []).length,
+    };
+    console.log(`[fb] www watch status=${resp.status} len=${html.length} patterns=${JSON.stringify(patterns)}`);
     const urls = parseVideoUrls(html);
     if (urls.hd || urls.sd) {
       console.log(`[fb] Found via www.facebook.com/watch (HD: ${!!urls.hd})`);
       return urls.hd || urls.sd;
+    }
+    // Try broader patterns - Facebook encodes URLs with escaped slashes in JSON
+    const fbcdnAll = html.match(/https?:[\\\/]+[a-z0-9-]+\.fbcdn\.net[^"'\s\\]*\.mp4[^"'\s\\]*/g);
+    // Extract all escaped video CDN URLs from the page JSON
+    const escapedAll = [];
+    const escapedRe = /"(https?:\\\/\\\/[^"]*?\.fbcdn\.net[^"]*?\.mp4[^"]*)"/g;
+    let em;
+    while ((em = escapedRe.exec(html)) !== null) {
+      escapedAll.push(em[1].replace(/\\\//g, '/'));
+    }
+    if (escapedAll.length > 0) {
+      // Prefer HD: look for urls with higher bitrate or "hd" markers
+      const hdUrl = escapedAll.find(u => /sve_hd|quality_hd|hd_src/i.test(u));
+      const best = hdUrl || escapedAll.sort((a, b) => {
+        const brA = (a.match(/bitrate=(\d+)/) || [])[1] || 0;
+        const brB = (b.match(/bitrate=(\d+)/) || [])[1] || 0;
+        return Number(brB) - Number(brA);
+      })[0];
+      console.log(`[fb] Found ${escapedAll.length} CDN URLs, using: ${best.slice(0, 100)}...`);
+      return best;
+    }
+    if (fbcdnAll && fbcdnAll.length > 0) {
+      const best = fbcdnAll.sort((a, b) => b.length - a.length)[0];
+      const url = best.replace(/\\\//g, '/');
+      console.log(`[fb] Found ${fbcdnAll.length} unescaped CDN URLs, using: ${url.slice(0, 100)}...`);
+      return url;
     }
   } catch (e) {
     console.log(`[fb] www.facebook.com/watch failed: ${e.message}`);
