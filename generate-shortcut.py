@@ -155,15 +155,11 @@ def if_end(group_id):
 
 
 def build_actions():
-    """Full shortcut with FLAT structure (no nested conditionals).
-    The working manually-built shortcut is completely linear with zero If blocks.
-    Nested If blocks break ActionOutput references on iOS. This version uses
-    separate non-nested If blocks with a 'handled' flag to avoid nesting.
+    """Completely linear shortcut -- ZERO conditionals around download.
+    Matches the working manually-built shortcut structure exactly.
+    No error handling, no picker (for now) -- just prove download works.
     """
     g_input = new_uuid()
-    g_error = new_uuid()
-    g_picker = new_uuid()
-    g_handled = new_uuid()
 
     clipboard_uuid = new_uuid()
     api_post_uuid = new_uuid()
@@ -172,13 +168,14 @@ def build_actions():
 
     actions = []
 
-    # --- Input: clipboard default, Share Sheet overrides ---
+    # 1. Get clipboard as default input
     actions.append(act("getclipboard", {"UUID": clipboard_uuid}))
     actions.append(act("setvariable", {
         "WFVariableName": "videoURL",
         "WFInput": output_ref(clipboard_uuid, "Clipboard"),
     }))
 
+    # 2. Share Sheet override
     input_uuid = new_uuid()
     actions.append(act("setvariable", {
         "UUID": input_uuid,
@@ -193,13 +190,13 @@ def build_actions():
     }))
     actions.append(if_end(g_input))
 
-    # --- Notification ---
+    # 3. Notification
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Downloading...",
     }))
 
-    # --- POST to cobalt API ---
+    # 4. POST to cobalt API
     actions.append(act("downloadurl", {
         "UUID": api_post_uuid,
         "ShowHeaders": True,
@@ -219,116 +216,36 @@ def build_actions():
         ]),
     }))
 
-    # --- Get status ---
-    status_uuid = new_uuid()
-    actions.append(act("getvalueforkey", {
-        "UUID": status_uuid,
-        "WFDictionaryKey": "status",
-        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
-    }))
-    actions.append(act("setvariable", {
-        "WFVariableName": "status",
-        "WFInput": output_ref(status_uuid, "Dictionary Value"),
-    }))
-
-    # --- FLAT IF #1: Error check (not nested) ---
-    actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
-    actions.append(if_begin(g_error, "Contains", "error"))
-    actions.append(act("setvariable", {
-        "WFVariableName": "handled",
-        "WFInput": text("yes"),
-    }))
-    actions.append(act("alert", {
-        "WFAlertActionTitle": "Couldn't Save Video",
-        "WFAlertActionMessage": "This video couldn't be downloaded. "
-            "Make sure the link is valid and the content is publicly available.",
-        "WFAlertActionCancelButtonShown": False,
-    }))
-    actions.append(if_end(g_error))
-
-    # --- FLAT IF #2: Picker check (not nested) ---
-    actions.append(act("getvariable", {"WFVariable": var_ref("status")}))
-    actions.append(if_begin(g_picker, "Contains", "picker"))
-    actions.append(act("setvariable", {
-        "WFVariableName": "handled",
-        "WFInput": text("yes"),
-    }))
-
-    picker_key_uuid = new_uuid()
-    actions.append(act("getvalueforkey", {
-        "UUID": picker_key_uuid,
-        "WFDictionaryKey": "picker",
-        "WFInput": output_ref(api_post_uuid, "Contents of URL"),
-    }))
-
-    loop_id = new_uuid()
-    repeat_uuid = new_uuid()
-    actions.append(act("repeat.each", {
-        "UUID": repeat_uuid,
-        "GroupingIdentifier": loop_id,
-        "WFControlFlowMode": 0,
-        "WFInput": output_ref(picker_key_uuid, "Dictionary Value"),
-    }))
-
-    item_url_uuid = new_uuid()
-    actions.append(act("getvalueforkey", {
-        "UUID": item_url_uuid,
-        "WFDictionaryKey": "url",
-        "WFInput": output_ref(repeat_uuid, "Repeat Item"),
-    }))
-    actions.append(act("setvariable", {
-        "WFVariableName": "downloadURL",
-        "WFInput": output_ref_as_url(item_url_uuid, "Dictionary Value"),
-    }))
-    item_dl_uuid = new_uuid()
-    actions.append(act("downloadurl", {
-        "UUID": item_dl_uuid,
-        "WFURL": var_text("downloadURL"),
-        "ShowHeaders": True,
-    }))
-    actions.append(act("savetocameraroll", {
-        "WFInput": output_ref(item_dl_uuid, "Contents of URL"),
-    }))
-
-    actions.append(act("repeat.each", {
-        "GroupingIdentifier": loop_id,
-        "WFControlFlowMode": 2,
-    }))
-    actions.append(act("notification", {
-        "WFNotificationActionTitle": "Save Video",
-        "WFNotificationActionBody": "All items saved!",
-    }))
-    actions.append(if_end(g_picker))
-
-    # --- FLAT IF #3: Tunnel/redirect (only if not already handled) ---
-    actions.append(act("getvariable", {"WFVariable": var_ref("handled")}))
-    actions.append(if_begin(g_handled, "Has Any Value"))
-    # Already handled by error or picker - do nothing
-    actions.append(if_else(g_handled))
-
-    # Tunnel/redirect path - ONE level of nesting only
+    # 5. Get "url" from response (direct ActionOutput ref)
     actions.append(act("getvalueforkey", {
         "UUID": geturl_uuid,
         "WFDictionaryKey": "url",
         "WFInput": output_ref(api_post_uuid, "Contents of URL"),
     }))
+
+    # 6. Set downloadURL with URL coercion
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
         "WFInput": output_ref_as_url(geturl_uuid, "Dictionary Value"),
     }))
+
+    # 7. Download the video
     actions.append(act("downloadurl", {
         "UUID": download_uuid,
         "WFURL": var_text("downloadURL"),
         "ShowHeaders": True,
     }))
+
+    # 8. Save to Photos
     actions.append(act("savetocameraroll", {
         "WFInput": output_ref(download_uuid, "Contents of URL"),
     }))
+
+    # 9. Done
     actions.append(act("notification", {
         "WFNotificationActionTitle": "Save Video",
         "WFNotificationActionBody": "Video saved!",
     }))
-    actions.append(if_end(g_handled))
 
     return actions
 
