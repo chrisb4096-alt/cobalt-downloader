@@ -280,7 +280,7 @@ def build_actions():
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref(item_url_uuid, "Dictionary Value"),
+        "WFInput": output_text(item_url_uuid, "Dictionary Value"),
     }))
     item_dl_uuid = new_uuid()
     actions.append(act("downloadurl", {
@@ -314,7 +314,7 @@ def build_actions():
     }))
     actions.append(act("setvariable", {
         "WFVariableName": "downloadURL",
-        "WFInput": output_ref(geturl_uuid, "Dictionary Value"),
+        "WFInput": output_text(geturl_uuid, "Dictionary Value"),
     }))
     actions.append(act("downloadurl", {
         "UUID": download_uuid,
