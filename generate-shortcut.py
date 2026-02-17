@@ -401,6 +401,7 @@ def make_shortcut(actions_fn, glyph=59746, color=946986751):
         },
         "WFWorkflowInputContentItemClasses": [
             "WFURLContentItem",
+            "WFStringContentItem",
         ],
         "WFWorkflowMinimumClientVersion": 900,
         "WFWorkflowMinimumClientVersionString": "900",
