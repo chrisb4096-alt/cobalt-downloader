@@ -213,6 +213,7 @@ def build_actions():
             dict_item("videoQuality", text("max")),
             dict_item("filenameStyle", text("pretty")),
             dict_item("youtubeVideoCodec", text("h264")),
+            dict_item("convertGif", False, item_type=1),
         ]),
         "WFHTTPHeaders": dict_value([
             dict_item("Content-Type", text("application/json")),
